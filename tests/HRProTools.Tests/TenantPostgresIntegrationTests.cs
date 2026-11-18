@@ -1,4 +1,5 @@
 using HRProTools.Web.Data;
+using HRProTools.Web.Services;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 
@@ -122,6 +123,89 @@ public sealed class TenantPostgresIntegrationTests
             Assert.Equal(2, await verification.SalaryHistory.CountAsync());
             Assert.Single(await verification.EmploymentAssignments.Where(x => x.ValidTo == null).ToListAsync());
             Assert.Equal(5_500_000m, await verification.SalaryHistory.Where(x => x.ValidTo == null).Select(x => x.GrossSalary).SingleAsync());
+        }
+        finally
+        {
+            await ExecuteAsync(admin, $"DROP SCHEMA IF EXISTS \"{schema}\" CASCADE;");
+        }
+    }
+
+    [Fact]
+    public async Task AutomaticIdentifiersAdvanceAndEmployeeListQueryRunsInPostgres()
+    {
+        var baseConnection = Environment.GetEnvironmentVariable("HRPROTOOLS_TEST_CONNECTION");
+        Assert.False(string.IsNullOrWhiteSpace(baseConnection), "Defina HRPROTOOLS_TEST_CONNECTION para la prueba PostgreSQL.");
+        var schema = "hr_t_" + Guid.NewGuid().ToString("N");
+        await using var admin = new NpgsqlConnection(baseConnection);
+        await admin.OpenAsync();
+        try
+        {
+            await ExecuteAsync(admin, $"CREATE SCHEMA \"{schema}\";");
+            await using var db = Create(baseConnection!, schema);
+            await db.Database.MigrateAsync();
+
+            var company = new Company
+            {
+                Code = "EMP-0041",
+                LegalName = "Empresa automatica",
+                TradeName = "Empresa automatica",
+                TaxId = "90000000-1"
+            };
+            db.Companies.Add(company);
+            await db.SaveChangesAsync();
+
+            await using (var transaction = await db.Database.BeginTransactionAsync())
+            {
+                Assert.Equal("EMP-0042", await TenantIdentifierAllocator.NextCompanyCodeAsync(db));
+                Assert.Equal("DEP-0001", await TenantIdentifierAllocator.NextDepartmentCodeAsync(db, company.Id));
+                await transaction.RollbackAsync();
+            }
+
+            var department = new Department { CompanyId = company.Id, Code = "DEP-0001", Name = "Administracion" };
+            var position = new Position { CompanyId = company.Id, Code = "ANA", Name = "Analista" };
+            var person = new Person
+            {
+                DocumentNumber = "4567890",
+                NormalizedDocumentNumber = "4567890",
+                GivenNames = "Carlos",
+                FamilyNames = "Prueba"
+            };
+            var employment = new Employment
+            {
+                EmployeeNumber = "41",
+                Person = person,
+                CompanyId = company.Id,
+                StartDate = new DateOnly(2026, 11, 18)
+            };
+            db.AddRange(department, position, person, employment);
+            db.EmploymentAssignments.Add(new EmploymentAssignment
+            {
+                Employment = employment,
+                Department = department,
+                Position = position,
+                ValidFrom = employment.StartDate
+            });
+            db.SalaryHistory.Add(new SalaryHistory
+            {
+                Employment = employment,
+                GrossSalary = 7_000_000m,
+                ValidFrom = employment.StartDate
+            });
+            await db.SaveChangesAsync();
+
+            await using (var transaction = await db.Database.BeginTransactionAsync())
+            {
+                Assert.Equal("42", await TenantIdentifierAllocator.NextEmployeeNumberAsync(db));
+                await transaction.RollbackAsync();
+            }
+
+            var rows = await TenantEmployeeQueries.ListAsync(db);
+            var row = Assert.Single(rows);
+            Assert.Equal("41", row.EmployeeNumber);
+            Assert.Equal("Empresa automatica", row.Company);
+            Assert.Equal("Administracion", row.Department);
+            Assert.Equal("Analista", row.Position);
+            Assert.Equal(7_000_000m, row.GrossSalary);
         }
         finally
         {

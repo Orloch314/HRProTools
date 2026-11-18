@@ -7,7 +7,7 @@ namespace HRProTools.Web.Services;
 public sealed class CompanyForm
 {
     public Guid? Id { get; set; }
-    [Required, MaxLength(32)] public string Code { get; set; } = string.Empty;
+    [MaxLength(32)] public string Code { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string LegalName { get; set; } = string.Empty;
     [Required, MaxLength(32)] public string TaxId { get; set; } = string.Empty;
     [EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
@@ -19,14 +19,13 @@ public sealed class CatalogForm
 {
     public Guid? Id { get; set; }
     [Required] public Guid CompanyId { get; set; }
-    [Required, MaxLength(32)] public string Code { get; set; } = string.Empty;
+    [MaxLength(32)] public string Code { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string Name { get; set; } = string.Empty;
     [MaxLength(80)] public string Level { get; set; } = string.Empty;
 }
 
 public sealed class EmployeeForm
 {
-    [Required, MaxLength(32)] public string EmployeeNumber { get; set; } = string.Empty;
     [Required, MaxLength(40)] public string DocumentNumber { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string GivenNames { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string FamilyNames { get; set; } = string.Empty;
@@ -81,11 +80,13 @@ public sealed class TenantDataService(
     {
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
             var item = form.Id is null
                 ? new Company()
                 : await db.Companies.SingleAsync(x => x.Id == form.Id, cancellationToken);
-            item.Code = form.Code.Trim().ToUpperInvariant();
+            if (form.Id is null)
+                item.Code = await TenantIdentifierAllocator.NextCompanyCodeAsync(db, cancellationToken);
             item.LegalName = form.LegalName.Trim();
             item.TradeName = form.LegalName.Trim();
             item.TaxId = form.TaxId.Trim();
@@ -95,6 +96,7 @@ public sealed class TenantDataService(
             item.UpdatedAtUtc = DateTimeOffset.UtcNow;
             if (form.Id is null) db.Companies.Add(item);
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
     }
 
@@ -110,6 +112,7 @@ public sealed class TenantDataService(
     {
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
             if (!await db.Companies.AnyAsync(x => x.Id == form.CompanyId && x.IsActive, cancellationToken))
                 throw new InvalidOperationException("La empresa no esta activa.");
@@ -118,11 +121,13 @@ public sealed class TenantDataService(
             if (form.Id is not null && item.CompanyId != form.CompanyId)
                 throw new InvalidOperationException("No se puede cambiar la empresa del departamento.");
             item.CompanyId = form.CompanyId;
-            item.Code = form.Code.Trim().ToUpperInvariant();
+            if (form.Id is null)
+                item.Code = await TenantIdentifierAllocator.NextDepartmentCodeAsync(db, form.CompanyId, cancellationToken);
             item.Name = form.Name.Trim();
             item.UpdatedAtUtc = DateTimeOffset.UtcNow;
             if (form.Id is null) db.Departments.Add(item);
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
     }
 
@@ -154,6 +159,8 @@ public sealed class TenantDataService(
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
         {
+            if (string.IsNullOrWhiteSpace(form.Code))
+                throw new InvalidOperationException("Indique el codigo del cargo.");
             if (!await db.Companies.AnyAsync(x => x.Id == form.CompanyId && x.IsActive, cancellationToken))
                 throw new InvalidOperationException("La empresa no esta activa.");
             var item = form.Id is null ? new Position() :
@@ -189,29 +196,42 @@ public sealed class TenantDataService(
     {
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
-        {
-            return await db.Employments.AsNoTracking()
-                .Include(x => x.Person).Include(x => x.Company)
-                .Select(x => new EmployeeRow(
-                    x.Id, x.EmployeeNumber, x.Person.DocumentNumber, x.Person.GivenNames, x.Person.FamilyNames,
-                    x.Person.GivenNames + " " + x.Person.FamilyNames,
-                    x.Person.Email, x.Person.Phone, x.CompanyId, x.Company.LegalName,
-                    db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.DepartmentId).FirstOrDefault(),
-                    db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.Department.Name).FirstOrDefault() ?? "-",
-                    db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.PositionId).FirstOrDefault(),
-                    db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.Position.Name).FirstOrDefault() ?? "-",
-                    x.StartDate, x.Status,
-                    db.SalaryHistory.Where(s => s.EmploymentId == x.Id && s.ValidTo == null).Select(s => s.GrossSalary).FirstOrDefault()))
-                .OrderBy(x => x.EmployeeNumber).ToListAsync(cancellationToken);
-        }
+            return await TenantEmployeeQueries.ListAsync(db, cancellationToken);
     }
 
-    public async Task CreateEmployeeAsync(EmployeeForm form, CancellationToken cancellationToken = default)
+    public Task<string> CreateEmployeeAsync(EmployeeForm form, CancellationToken cancellationToken = default) =>
+        CreateEmployeeCoreAsync(form, null, cancellationToken);
+
+    public Task<string> ImportEmployeeAsync(
+        EmployeeForm form,
+        string employeeNumber,
+        CancellationToken cancellationToken = default) =>
+        CreateEmployeeCoreAsync(form, employeeNumber, cancellationToken);
+
+    private async Task<string> CreateEmployeeCoreAsync(
+        EmployeeForm form,
+        string? importedEmployeeNumber,
+        CancellationToken cancellationToken)
     {
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
+            string employeeNumber;
+            if (importedEmployeeNumber is null)
+            {
+                employeeNumber = await TenantIdentifierAllocator.NextEmployeeNumberAsync(db, cancellationToken);
+            }
+            else
+            {
+                employeeNumber = importedEmployeeNumber.Trim().ToUpperInvariant();
+                if (employeeNumber.Length is 0 or > 32)
+                    throw new InvalidOperationException("El numero de legajo importado no es valido.");
+                await TenantIdentifierAllocator.LockEmployeeNumbersAsync(db, cancellationToken);
+                if (await db.Employments.AnyAsync(x => x.EmployeeNumber == employeeNumber, cancellationToken))
+                    throw new InvalidOperationException($"El legajo {employeeNumber} ya existe.");
+            }
+
             var department = await db.Departments.AsNoTracking().SingleAsync(x => x.Id == form.DepartmentId && x.IsActive, cancellationToken);
             var position = await db.Positions.AsNoTracking().SingleAsync(x => x.Id == form.PositionId && x.IsActive, cancellationToken);
             if (department.CompanyId != form.CompanyId || position.CompanyId != form.CompanyId)
@@ -234,7 +254,7 @@ public sealed class TenantDataService(
 
             var employment = new Employment
             {
-                EmployeeNumber = form.EmployeeNumber.Trim().ToUpperInvariant(),
+                EmployeeNumber = employeeNumber,
                 Person = person,
                 CompanyId = form.CompanyId,
                 StartDate = form.StartDate
@@ -256,6 +276,7 @@ public sealed class TenantDataService(
             });
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
+            return employeeNumber;
         }
     }
 

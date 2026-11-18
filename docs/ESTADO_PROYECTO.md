@@ -13,14 +13,14 @@
 - Invitaciones de 24 horas mediante token Identity; envio SMTP configurable y enlace manual cuando SMTP no esta configurado.
 - Configuracion SMTP protegida con Data Protection; secretos locales fuera del repositorio.
 - Organizacion tenant: empresas, departamentos y cargos con altas, edicion y activacion/desactivacion controlada.
-- Personas y vinculos laborales con legajo unico, asignaciones historicas, historial salarial y cierre de relacion laboral.
+- Personas y vinculos laborales con legajo unico asignado automaticamente, asignaciones historicas, historial salarial y cierre de relacion laboral.
 - Interfaz responsive basada en la identidad visual proporcionada.
 - Inicializacion del repositorio Git `main` y remoto oficial `https://github.com/Orloch314/HRProTools`.
 
 ## Verificacion realizada
 
 - `dotnet build`: correcta, 0 advertencias y 0 errores.
-- `dotnet test`: 6 pruebas superadas, 0 fallidas, 0 omitidas.
+- `dotnet test`: 7 pruebas superadas, 0 fallidas, 0 omitidas.
 - Prueba de integracion PostgreSQL: crea y migra dos schemas temporales, inserta datos distintos, verifica aislamiento y elimina solamente esos schemas.
 - Prueba de integridad laboral: confirma legajo unico y preservacion del historial organizativo y salarial con una sola vigencia abierta.
 - Prueba funcional en navegador: login global, formulario interactivo y provisioning completo del grupo sintetico `QA27`.
@@ -58,6 +58,17 @@
 - Se agrego `Application:PublicBaseUrl` opcional para construir enlaces con el dominio publico HTTPS cuando exista; si queda vacio se conserva el origen local actual.
 - No se recibieron encabezados completos del mensaje, por lo que no existe evidencia para atribuir el SPAM a SPF, DKIM o DMARC. La clasificacion debe volver a probarse manualmente.
 
+### Codigos automaticos y nomina basica
+
+- Las empresas nuevas reciben un codigo correlativo del sistema (`EMP-0001`, `EMP-0002`, etc.); el codigo ya no se solicita al crear el grupo ni desde Organizacion.
+- Los departamentos nuevos reciben un codigo correlativo por empresa (`DEP-0001`, `DEP-0002`, etc.); el codigo asignado se conserva al editar.
+- Las altas manuales de funcionarios reciben un legajo numerico igual al mayor legajo numerico existente mas uno.
+- La ruta de servicio para futuras importaciones conserva el legajo informado y valida duplicados antes de insertar; el indice unico de PostgreSQL mantiene una segunda garantia de integridad.
+- La asignacion de codigos y legajos usa bloqueos transaccionales por schema tenant para impedir duplicados entre operaciones simultaneas.
+- Se corrigio la consulta de nomina que ordenaba una proyeccion no traducible por Entity Framework y producia `InvalidOperationException`.
+- El formulario de alta carga las empresas activas del tenant, selecciona una por defecto y ajusta departamentos/cargos al cambiar de empresa.
+- Verificacion de datos: `Prova2` y `Prova SA` estan activas en `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`.
+
 ### Pruebas especificas ejecutadas
 
 - Activacion Identity con contraseña valida y persistencia de cuenta activa/confirmada.
@@ -66,6 +77,7 @@
 - Rechazo del intento de reutilizacion del token.
 - POST HTTP real del formulario estatico con binding correcto y mensajes en español.
 - Mostrar/ocultar contraseña en navegador sin alterar el contenido.
+- Asignacion correlativa posterior a codigos y legajos existentes, y ejecucion real de la consulta de nomina sobre PostgreSQL.
 
 ## Configuracion local
 

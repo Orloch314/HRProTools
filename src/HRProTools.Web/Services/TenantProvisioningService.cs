@@ -14,7 +14,6 @@ public sealed class CreateTenantModel
 {
     [Required, MaxLength(32)] public string GroupCode { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string GroupName { get; set; } = string.Empty;
-    [Required, MaxLength(32)] public string CompanyCode { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string CompanyName { get; set; } = string.Empty;
     [Required, MaxLength(32)] public string TaxId { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string AdministratorName { get; set; } = string.Empty;
@@ -57,14 +56,17 @@ public sealed class TenantProvisioningService(
             await using (var tenantDb = tenantFactory.Create(tenant.SchemaName))
             {
                 await tenantDb.Database.MigrateAsync(cancellationToken);
+                await using var transaction = await tenantDb.Database.BeginTransactionAsync(cancellationToken);
+                var companyCode = await TenantIdentifierAllocator.NextCompanyCodeAsync(tenantDb, cancellationToken);
                 tenantDb.Companies.Add(new Company
                 {
-                    Code = input.CompanyCode.Trim().ToUpperInvariant(),
+                    Code = companyCode,
                     LegalName = input.CompanyName.Trim(),
                     TradeName = input.CompanyName.Trim(),
                     TaxId = input.TaxId.Trim()
                 });
                 await tenantDb.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
             }
 
             var email = input.AdministratorEmail.Trim().ToLowerInvariant();
