@@ -69,6 +69,7 @@
 - El formulario de alta carga las empresas activas del tenant, selecciona una por defecto y ajusta departamentos/cargos al cambiar de empresa.
 - Los valores asignados por el sistema no se representan como campos de formulario: se retiraron codigo de empresa, codigo de departamento y legajo de las altas, junto con los campos visibles deshabilitados de las pantallas de cuenta.
 - La revision completa de componentes no encontro otros campos visibles `disabled`, `readonly` o de asignacion automatica; permanecen solamente campos ocultos tecnicos requeridos por los POST.
+- El login ya no muestra el aviso tecnico de proveedores externos ni la opcion Passkey no adoptada por el MVP; conserva solamente correo, contraseña, sesion persistente y recuperacion de contraseña, con textos unificados en español.
 - Verificacion de datos: `Prova2` y `Prova SA` estan activas en `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`.
 
 ### Pruebas especificas ejecutadas
