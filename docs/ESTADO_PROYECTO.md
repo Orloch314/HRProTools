@@ -62,9 +62,11 @@
 
 - Las empresas nuevas reciben un codigo correlativo del sistema (`EMP-0001`, `EMP-0002`, etc.); el codigo ya no se solicita al crear el grupo ni desde Organizacion.
 - Los departamentos nuevos reciben un codigo correlativo por empresa (`DEP-0001`, `DEP-0002`, etc.); el codigo asignado se conserva al editar.
+- Los cargos nuevos reciben un codigo correlativo por empresa (`CAR-0001`, `CAR-0002`, etc.); el formulario ya no solicita el codigo y `Nivel` es opcional tanto en la interfaz como en PostgreSQL.
 - Las altas manuales de funcionarios reciben un legajo numerico igual al mayor legajo numerico existente mas uno.
 - La ruta de servicio para futuras importaciones conserva el legajo informado y valida duplicados antes de insertar; el indice unico de PostgreSQL mantiene una segunda garantia de integridad.
 - La asignacion de codigos y legajos usa bloqueos transaccionales por schema tenant para impedir duplicados entre operaciones simultaneas.
+- Al iniciar con `Database:ApplyMigrations`, la aplicacion actualiza tambien todos los schemas tenant activos; la migracion de `Nivel` nullable fue aplicada y verificada en `A` y `QA27`.
 - Se corrigio la consulta de nomina que ordenaba una proyeccion no traducible por Entity Framework y producia `InvalidOperationException`.
 - El formulario de alta carga las empresas activas del tenant, selecciona una por defecto y ajusta departamentos/cargos al cambiar de empresa.
 - Los valores asignados por el sistema no se representan como campos de formulario: se retiraron codigo de empresa, codigo de departamento y legajo de las altas, junto con los campos visibles deshabilitados de las pantallas de cuenta.

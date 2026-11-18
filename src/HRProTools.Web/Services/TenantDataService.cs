@@ -7,7 +7,6 @@ namespace HRProTools.Web.Services;
 public sealed class CompanyForm
 {
     public Guid? Id { get; set; }
-    [MaxLength(32)] public string Code { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string LegalName { get; set; } = string.Empty;
     [Required, MaxLength(32)] public string TaxId { get; set; } = string.Empty;
     [EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
@@ -19,9 +18,8 @@ public sealed class CatalogForm
 {
     public Guid? Id { get; set; }
     [Required] public Guid CompanyId { get; set; }
-    [MaxLength(32)] public string Code { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string Name { get; set; } = string.Empty;
-    [MaxLength(80)] public string Level { get; set; } = string.Empty;
+    [MaxLength(80)] public string? Level { get; set; }
 }
 
 public sealed class EmployeeForm
@@ -158,9 +156,8 @@ public sealed class TenantDataService(
     {
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
+        await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
         {
-            if (string.IsNullOrWhiteSpace(form.Code))
-                throw new InvalidOperationException("Indique el codigo del cargo.");
             if (!await db.Companies.AnyAsync(x => x.Id == form.CompanyId && x.IsActive, cancellationToken))
                 throw new InvalidOperationException("La empresa no esta activa.");
             var item = form.Id is null ? new Position() :
@@ -168,12 +165,14 @@ public sealed class TenantDataService(
             if (form.Id is not null && item.CompanyId != form.CompanyId)
                 throw new InvalidOperationException("No se puede cambiar la empresa del cargo.");
             item.CompanyId = form.CompanyId;
-            item.Code = form.Code.Trim().ToUpperInvariant();
+            if (form.Id is null)
+                item.Code = await TenantIdentifierAllocator.NextPositionCodeAsync(db, form.CompanyId, cancellationToken);
             item.Name = form.Name.Trim();
-            item.Level = form.Level.Trim();
+            item.Level = string.IsNullOrWhiteSpace(form.Level) ? null : form.Level.Trim();
             item.UpdatedAtUtc = DateTimeOffset.UtcNow;
             if (form.Id is null) db.Positions.Add(item);
             await db.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
         }
     }
 

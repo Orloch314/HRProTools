@@ -32,7 +32,7 @@ else
 {
     <section class="panel"><h2>@(catalog.Id is null ? "Nuevo cargo" : "Editar cargo")</h2>
         <EditForm Model="catalog" OnValidSubmit="SavePositionAsync" FormName="position"><DataAnnotationsValidator /><ValidationSummary />
-            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Codigo</span><InputText @bind-Value="catalog.Code" /></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label><label><span>Nivel</span><InputText @bind-Value="catalog.Level" /></label></div>
+            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label><label><span>Nivel (opcional)</span><InputText @bind-Value="catalog.Level" /></label></div>
             <button class="btn-primary" type="submit">Guardar</button> @if (catalog.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCatalog">Cancelar</button> }
         </EditForm>
     </section>
@@ -52,9 +52,9 @@ else
     private async Task SavePositionAsync()=>await RunAsync(async()=>{await Data.SavePositionAsync(catalog);ResetCatalog();},"Cargo guardado.");
     private async Task ToggleDepartmentAsync(Guid id)=>await RunAsync(()=>Data.ToggleDepartmentAsync(id),"Estado del departamento actualizado.");
     private async Task TogglePositionAsync(Guid id)=>await RunAsync(()=>Data.TogglePositionAsync(id),"Estado del cargo actualizado.");
-    private void EditCompany(Company x)=>company=new(){Id=x.Id,Code=x.Code,LegalName=x.LegalName,TaxId=x.TaxId,Email=x.Email,Phone=x.Phone,Address=x.Address};
-    private void EditDepartment(Department x){tab="department";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Code=x.Code,Name=x.Name};}
-    private void EditPosition(Position x){tab="position";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Code=x.Code,Name=x.Name,Level=x.Level};}
+    private void EditCompany(Company x)=>company=new(){Id=x.Id,LegalName=x.LegalName,TaxId=x.TaxId,Email=x.Email,Phone=x.Phone,Address=x.Address};
+    private void EditDepartment(Department x){tab="department";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Name=x.Name};}
+    private void EditPosition(Position x){tab="position";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Name=x.Name,Level=x.Level};}
     private void ResetCompany()=>company=new(); private void ResetCatalog()=>catalog=new();
     private void ShowCompanies(){tab="company";ResetCatalog();} private void ShowDepartments(){tab="department";ResetCatalog();} private void ShowPositions(){tab="position";ResetCatalog();}
 }

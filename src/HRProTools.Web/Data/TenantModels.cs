@@ -36,7 +36,7 @@ public sealed class Position
     public Company Company { get; set; } = null!;
     public string Code { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
-    public string Level { get; set; } = string.Empty;
+    public string? Level { get; set; }
     public bool IsActive { get; set; } = true;
     public DateTimeOffset? DeactivatedAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;

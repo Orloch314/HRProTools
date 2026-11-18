@@ -77,6 +77,17 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await db.Database.MigrateAsync();
     await IdentitySeeder.SeedAsync(scope.ServiceProvider, builder.Configuration);
+
+    var tenantFactory = scope.ServiceProvider.GetRequiredService<TenantDbContextFactory>();
+    var tenantSchemas = await db.Tenants.AsNoTracking()
+        .Where(x => x.Status == TenantStatuses.Active)
+        .Select(x => x.SchemaName)
+        .ToListAsync();
+    foreach (var schemaName in tenantSchemas)
+    {
+        await using var tenantDb = tenantFactory.Create(schemaName);
+        await tenantDb.Database.MigrateAsync();
+    }
 }
 
 // Configure the HTTP request pipeline.

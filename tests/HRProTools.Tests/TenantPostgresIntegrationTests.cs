@@ -158,6 +158,7 @@ public sealed class TenantPostgresIntegrationTests
             {
                 Assert.Equal("EMP-0042", await TenantIdentifierAllocator.NextCompanyCodeAsync(db));
                 Assert.Equal("DEP-0001", await TenantIdentifierAllocator.NextDepartmentCodeAsync(db, company.Id));
+                Assert.Equal("CAR-0001", await TenantIdentifierAllocator.NextPositionCodeAsync(db, company.Id));
                 await transaction.RollbackAsync();
             }
 
@@ -206,6 +207,7 @@ public sealed class TenantPostgresIntegrationTests
             Assert.Equal("Administracion", row.Department);
             Assert.Equal("Analista", row.Position);
             Assert.Equal(7_000_000m, row.GrossSalary);
+            Assert.Null(await db.Positions.Select(x => x.Level).SingleAsync());
         }
         finally
         {

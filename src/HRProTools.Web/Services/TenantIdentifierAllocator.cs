@@ -30,6 +30,19 @@ public static class TenantIdentifierAllocator
         return NextPrefixedCode(existing, "DEP");
     }
 
+    public static async Task<string> NextPositionCodeAsync(
+        TenantDbContext db,
+        Guid companyId,
+        CancellationToken cancellationToken = default)
+    {
+        await LockAsync(db, $"position-code:{companyId:N}", cancellationToken);
+        var existing = await db.Positions.AsNoTracking()
+            .Where(x => x.CompanyId == companyId)
+            .Select(x => x.Code)
+            .ToListAsync(cancellationToken);
+        return NextPrefixedCode(existing, "CAR");
+    }
+
     public static async Task<string> NextEmployeeNumberAsync(
         TenantDbContext db,
         CancellationToken cancellationToken = default)

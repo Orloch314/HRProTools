@@ -303,7 +303,6 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .HasColumnType("boolean");
 
                     b.Property<string>("Level")
-                        .IsRequired()
                         .HasMaxLength(80)
                         .HasColumnType("character varying(80)");
 
