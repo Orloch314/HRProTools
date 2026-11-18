@@ -1,8 +1,8 @@
 # Estado del proyecto HR ProTools
 
-**Fecha:** 17/11/2026
+**Fecha:** 18/11/2026
 **Fase actual:** Fase 2/5 - primera aplicacion funcional
-**Estado:** Completada y verificada; Fase 3 no iniciada.
+**Estado:** Completada, corregida despues de la prueba manual y verificada; Fase 3 no iniciada.
 
 ## Implementado en Fase 2
 
@@ -20,12 +20,50 @@
 ## Verificacion realizada
 
 - `dotnet build`: correcta, 0 advertencias y 0 errores.
-- `dotnet test`: 3 pruebas superadas, 0 fallidas, 0 omitidas.
+- `dotnet test`: 6 pruebas superadas, 0 fallidas, 0 omitidas.
 - Prueba de integracion PostgreSQL: crea y migra dos schemas temporales, inserta datos distintos, verifica aislamiento y elimina solamente esos schemas.
 - Prueba de integridad laboral: confirma legajo unico y preservacion del historial organizativo y salarial con una sola vigencia abierta.
 - Prueba funcional en navegador: login global, formulario interactivo y provisioning completo del grupo sintetico `QA27`.
 - Verificacion directa de PostgreSQL: schemas `auth`, `platform` y `hr_t_6e24549785b64c81bbcac3472cbb98c4`; tenant `QA27` activo y empresa inicial `EMPQ2` presente.
 - No se envio correo real durante las pruebas.
+
+## Correcciones posteriores a la prueba manual
+
+### Activacion del administrador tenant
+
+- Causa verificada: `AcceptInvitation.razor` es una pagina Account con renderizado estatico y su modelo no tenia `SupplyParameterFromForm`; los valores visibles no llegaban al modelo procesado por el servidor.
+- El formulario ahora recibe correctamente contraseña y confirmacion, con validaciones y mensajes en español.
+- La aceptacion se procesa en un servicio transaccional: verifica el token, establece la contraseña, confirma el correo y activa la cuenta como una sola operacion.
+- Una invitacion aceptada no puede reutilizarse; los tokens invalidos, vencidos o ya utilizados reciben un mensaje unico sin detalles tecnicos.
+- Se mantiene `DataProtectionTokenProviderOptions.TokenLifespan = 24 horas`.
+- El resultado exitoso muestra una confirmacion y un enlace al login.
+- Se agrego un control reutilizable de mostrar/ocultar contraseña a invitacion, login, recuperacion/cambio de contraseña y configuracion SMTP. La prueba de navegador confirmo que alternar la visibilidad no cambia el valor.
+
+### PostgreSQL local identificado
+
+- Cadena efectiva de Development: host `127.0.0.1`, puerto `5432`, base `hrprotools`; la contraseña permanece solamente en User Secrets.
+- Contenedor correspondiente: `tributa-postgres-1`, imagen `postgres:18`, publicacion `127.0.0.1:5432 -> 5432`.
+- Version verificada: PostgreSQL `18.6`.
+- Schemas encontrados: `auth`, `platform`, `hr_t_6e24549785b64c81bbcac3472cbb98c4` y `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`.
+- La prueba manual esta en el tenant `A` / `Gruppo Prova`, schema `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`, empresa `AB` / `Prova SA`. El administrador `Roberto` permanece inactivo y no confirmado porque la invitacion anterior no fue completada.
+- Inspeccion directa: `docker exec -it tributa-postgres-1 psql -U tributa_dev -d hrprotools`.
+
+### Revision SMTP y correo no deseado
+
+- HR ProTools e iMatch usan MailKit 4.17, remitente configurable, autenticacion SMTP y el mismo esquema StartTLS/SSL segun configuracion.
+- Configuracion efectiva no secreta de HR ProTools: `smtps.aruba.it:587`, StartTLS, nombre `HR ProTools`, dominio remitente `imatchpy.com`.
+- Diferencia de codigo corregida: HR ProTools enviaba solo una parte HTML minima. Ahora genera alternativa texto plano + HTML, agrega `Reply-To`, asunto descriptivo y contenido de invitacion completo.
+- Se agrego `Application:PublicBaseUrl` opcional para construir enlaces con el dominio publico HTTPS cuando exista; si queda vacio se conserva el origen local actual.
+- No se recibieron encabezados completos del mensaje, por lo que no existe evidencia para atribuir el SPAM a SPF, DKIM o DMARC. La clasificacion debe volver a probarse manualmente.
+
+### Pruebas especificas ejecutadas
+
+- Activacion Identity con contraseña valida y persistencia de cuenta activa/confirmada.
+- Rechazo de contraseña y confirmacion diferentes en español.
+- Rechazo de token invalido sin activar la cuenta.
+- Rechazo del intento de reutilizacion del token.
+- POST HTTP real del formulario estatico con binding correcto y mensajes en español.
+- Mostrar/ocultar contraseña en navegador sin alterar el contenido.
 
 ## Configuracion local
 
@@ -37,9 +75,11 @@
 
 ## Pendientes y bloqueos reales
 
-1. Probar el envio y la recepcion de una invitacion real cuando se proporcionen credenciales SMTP de prueba.
-2. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
-3. Antes de Fase 3 debe aprobarse la especificacion exacta del calculo legal paraguayo y el formato de importacion Excel.
+1. Reiniciar la aplicacion y volver a abrir la invitacion recibida; si ya vencio, crear una nueva invitacion controlada.
+2. Repetir manualmente el envio/recepcion y aportar los encabezados completos si el correo vuelve a SPAM.
+3. Configurar `Application:PublicBaseUrl` con el dominio HTTPS real antes de enviar invitaciones desde un ambiente publicado.
+4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
+5. Antes de Fase 3 debe aprobarse la especificacion exacta del calculo legal paraguayo y el formato de importacion Excel.
 
 ## Proxima actividad autorizada
 

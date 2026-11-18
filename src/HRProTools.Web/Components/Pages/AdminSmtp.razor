@@ -14,7 +14,7 @@
             <label><span>Puerto</span><InputNumber @bind-Value="model.Port" /></label>
             <label><span>Seguridad</span><InputSelect @bind-Value="model.SecurityMode"><option>StartTls</option><option>SslOnConnect</option><option>None</option></InputSelect></label>
             <label><span>Usuario</span><InputText @bind-Value="model.Username" /></label>
-            <label><span>Contraseña @(model.HasStoredPassword ? "(guardada)" : "")</span><InputText type="password" @bind-Value="model.Password" /></label>
+            <div class="password-field-block"><label for="Smtp.Password"><span>Contraseña @(model.HasStoredPassword ? "(guardada)" : "")</span></label><PasswordInput Id="Smtp.Password" @bind-Value="model.Password" AriaRequired="false" /></div>
             <label><span>Email remitente</span><InputText type="email" @bind-Value="model.FromAddress" /></label>
             <label><span>Nombre remitente</span><InputText @bind-Value="model.FromName" /></label>
         </div>

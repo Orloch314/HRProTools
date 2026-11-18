@@ -1,49 +1,59 @@
 @page "/Account/AcceptInvitation"
 @attribute [AllowAnonymous]
-@using System.ComponentModel.DataAnnotations
-@using System.Text
-@using Microsoft.AspNetCore.Identity
-@using Microsoft.AspNetCore.WebUtilities
-@inject UserManager<ApplicationUser> UserManager
-@inject NavigationManager Navigation
+@inject InvitationAcceptanceService Invitations
 
-<PageTitle>Aceptar invitacion - HR ProTools</PageTitle>
+<PageTitle>Completar invitación - HR ProTools</PageTitle>
 <div class="auth-card">
     <img src="images/logo.png" alt="HR ProTools" />
-    <h1>Complete su invitacion</h1>
-    <p>Defina su contraseña para activar el acceso. El enlace tiene una vigencia de 24 horas.</p>
-    @if (!string.IsNullOrWhiteSpace(error)) { <div class="notice notice-error">@error</div> }
-    <EditForm Model="model" OnValidSubmit="AcceptAsync" FormName="accept-invitation"><DataAnnotationsValidator/><ValidationSummary/>
-        <label><span>Correo</span><input value="@Email" disabled /></label>
-        <label><span>Nueva contraseña</span><InputText type="password" @bind-Value="model.Password" autocomplete="new-password" /></label>
-        <label><span>Confirmar contraseña</span><InputText type="password" @bind-Value="model.ConfirmPassword" autocomplete="new-password" /></label>
-        <button class="btn-primary" type="submit">Activar acceso</button>
-    </EditForm>
+    @if (completed)
+    {
+        <h1>Cuenta activada</h1>
+        <div class="notice notice-success" role="status">@message</div>
+        <a class="btn-primary" href="Account/Login">Ir al inicio de sesión</a>
+    }
+    else
+    {
+        <h1>Complete su invitación</h1>
+        <p>Defina su contraseña para activar el acceso. El enlace tiene una vigencia de 24 horas.</p>
+        @if (!string.IsNullOrWhiteSpace(message))
+        {
+            <div class="notice notice-error" role="alert">@message</div>
+        }
+        <EditForm Model="Input" OnValidSubmit="AcceptAsync" FormName="accept-invitation" method="post">
+            <DataAnnotationsValidator />
+            <ValidationSummary class="validation-summary" role="alert" />
+            <label><span>Correo electrónico</span><input value="@Email" disabled /></label>
+            <label for="Invitation.Password"><span>Nueva contraseña</span></label>
+            <PasswordInput Id="Invitation.Password"
+                           @bind-Value="Input.Password"
+                           Autocomplete="new-password" />
+            <ValidationMessage For="() => Input.Password" class="validation-message" />
+            <label for="Invitation.ConfirmPassword"><span>Confirmar contraseña</span></label>
+            <PasswordInput Id="Invitation.ConfirmPassword"
+                           @bind-Value="Input.ConfirmPassword"
+                           Autocomplete="new-password" />
+            <ValidationMessage For="() => Input.ConfirmPassword" class="validation-message" />
+            <button class="btn-primary invitation-submit" type="submit">Activar acceso</button>
+        </EditForm>
+    }
 </div>
+
 @code {
     [SupplyParameterFromQuery] public string? Code { get; set; }
     [SupplyParameterFromQuery] public string? Email { get; set; }
-    private readonly InvitationModel model = new(); private string error=string.Empty;
+
+    [SupplyParameterFromForm]
+    private AcceptInvitationModel Input { get; set; } = default!;
+
+    private string message = string.Empty;
+    private bool completed;
+
+    protected override void OnInitialized() => Input ??= new();
+
     private async Task AcceptAsync()
     {
-        try
-        {
-            var user = string.IsNullOrWhiteSpace(Email) ? null : await UserManager.FindByEmailAsync(Email);
-            if (user is null || string.IsNullOrWhiteSpace(Code) || user.InvitationAcceptedAtUtc is not null)
-                throw new InvalidOperationException("La invitacion no es valida o ya fue utilizada.");
-            var token = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
-            var result = await UserManager.ResetPasswordAsync(user, token, model.Password);
-            if (!result.Succeeded) throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x=>x.Description)));
-            user.EmailConfirmed=true; user.IsActive=true; user.InvitationAcceptedAtUtc=DateTimeOffset.UtcNow;
-            var update=await UserManager.UpdateAsync(user);
-            if(!update.Succeeded) throw new InvalidOperationException(string.Join("; ", update.Errors.Select(x=>x.Description)));
-            Navigation.NavigateTo("Account/Login", forceLoad:true);
-        }
-        catch(Exception ex){error=ex.Message;}
-    }
-    private sealed class InvitationModel
-    {
-        [Required, MinLength(12)] public string Password {get;set;}=string.Empty;
-        [Required, Compare(nameof(Password))] public string ConfirmPassword {get;set;}=string.Empty;
+        var result = await Invitations.AcceptAsync(Email, Code, Input.Password);
+        completed = result.Succeeded;
+        message = result.Message;
     }
 }

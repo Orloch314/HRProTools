@@ -1,4 +1,6 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net;
+using System.Text.RegularExpressions;
 using HRProTools.Web.Data;
 using MailKit.Net.Smtp;
 using MailKit.Security;
@@ -77,9 +79,14 @@ public sealed class SmtpSettingsService(
 
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(settings.FromName, settings.FromAddress));
+        message.ReplyTo.Add(new MailboxAddress(settings.FromName, settings.FromAddress));
         message.To.Add(MailboxAddress.Parse(recipient));
         message.Subject = subject;
-        message.Body = new TextPart("html") { Text = html };
+        message.Body = new BodyBuilder
+        {
+            TextBody = ToPlainText(html),
+            HtmlBody = html
+        }.ToMessageBody();
 
         using var client = new SmtpClient();
         await client.ConnectAsync(settings.Host, settings.Port, ParseMode(settings.SecurityMode), cancellationToken);
@@ -98,4 +105,11 @@ public sealed class SmtpSettingsService(
         "SslOnConnect" => SecureSocketOptions.SslOnConnect,
         _ => SecureSocketOptions.StartTls
     };
+
+    private static string ToPlainText(string html)
+    {
+        var withLineBreaks = Regex.Replace(html, "<(br|/p|/div|/h[1-6])[^>]*>", "\n", RegexOptions.IgnoreCase);
+        var withoutTags = Regex.Replace(withLineBreaks, "<[^>]+>", string.Empty);
+        return WebUtility.HtmlDecode(withoutTags).Trim();
+    }
 }

@@ -46,6 +46,7 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<ApplicationDbContext>()
     .AddSignInManager()
+    .AddErrorDescriber<SpanishIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
@@ -66,6 +67,7 @@ builder.Services.AddScoped<CurrentTenantService>();
 builder.Services.AddSingleton<TenantDbContextFactory>();
 builder.Services.AddScoped<TenantProvisioningService>();
 builder.Services.AddScoped<TenantDataService>();
+builder.Services.AddScoped<InvitationAcceptanceService>();
 
 var app = builder.Build();
 

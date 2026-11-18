@@ -29,9 +29,9 @@
                     <label for="Input.Email" class="form-label">Correo electronico</label>
                     <ValidationMessage For="() => Input.Email" class="text-danger" />
                 </div>
-                <div class="form-floating mb-3">
-                    <InputText type="password" @bind-Value="Input.Password" id="Input.Password" class="form-control" autocomplete="current-password" aria-required="true" placeholder="password" />
+                <div class="mb-3">
                     <label for="Input.Password" class="form-label">Contraseña</label>
+                    <PasswordInput Id="Input.Password" @bind-Value="Input.Password" CssClass="form-control" Autocomplete="current-password" Placeholder="Contraseña" />
                     <ValidationMessage For="() => Input.Password" class="text-danger" />
                 </div>
                 <div class="checkbox mb-3">

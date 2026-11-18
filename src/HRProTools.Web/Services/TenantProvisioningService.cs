@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Net;
 using System.Text;
 using HRProTools.Web.Data;
 using HRProTools.Web.Security;
@@ -27,7 +28,8 @@ public sealed class TenantProvisioningService(
     TenantDbContextFactory tenantFactory,
     UserManager<ApplicationUser> users,
     SmtpSettingsService smtp,
-    NavigationManager navigation)
+    NavigationManager navigation,
+    IConfiguration configuration)
 {
     public async Task<ProvisionTenantResult> CreateAsync(
         CreateTenantModel input,
@@ -84,7 +86,7 @@ public sealed class TenantProvisioningService(
             var token = await users.GeneratePasswordResetTokenAsync(invited);
             var code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
             var invitationLink = navigation.GetUriWithQueryParameters(
-                navigation.ToAbsoluteUri("Account/AcceptInvitation").AbsoluteUri,
+                GetInvitationEndpoint(),
                 new Dictionary<string, object?> { ["code"] = code, ["email"] = email });
 
             tenant.Status = TenantStatuses.Active;
@@ -103,8 +105,19 @@ public sealed class TenantProvisioningService(
             var sent = false;
             if (await smtp.IsConfiguredAsync(cancellationToken))
             {
-                await smtp.SendAsync(email, "Invitacion a HR ProTools",
-                    $"<p>Fue invitado a administrar {tenant.Name}.</p><p><a href=\"{invitationLink}\">Aceptar invitacion</a></p><p>El enlace vence en 24 horas.</p>",
+                var safeTenantName = WebUtility.HtmlEncode(tenant.Name);
+                var safeInvitationLink = WebUtility.HtmlEncode(invitationLink);
+                await smtp.SendAsync(email, $"Invitación para administrar {tenant.Name} en HR ProTools",
+                    $"""
+                    <!doctype html>
+                    <html lang="es"><body style="font-family:Arial,sans-serif;color:#10243a;line-height:1.5">
+                    <h1 style="color:#08243c">Bienvenido a HR ProTools</h1>
+                    <p>Fue invitado a administrar <strong>{safeTenantName}</strong>.</p>
+                    <p><a href="{safeInvitationLink}" style="display:inline-block;background:#ffc400;color:#10243a;padding:12px 18px;border-radius:8px;text-decoration:none;font-weight:bold">Completar invitación</a></p>
+                    <p>El enlace es personal, puede utilizarse una sola vez y vence en 24 horas.</p>
+                    <p>Si no esperaba esta invitación, puede ignorar este mensaje.</p>
+                    </body></html>
+                    """,
                     cancellationToken);
                 sent = true;
             }
@@ -125,5 +138,18 @@ public sealed class TenantProvisioningService(
     {
         if (!result.Succeeded)
             throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+    }
+
+    private string GetInvitationEndpoint()
+    {
+        var configuredBaseUrl = configuration["Application:PublicBaseUrl"];
+        if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var publicBase) &&
+            (publicBase.Scheme == Uri.UriSchemeHttp || publicBase.Scheme == Uri.UriSchemeHttps))
+        {
+            var normalizedBase = new Uri(publicBase.AbsoluteUri.TrimEnd('/') + "/");
+            return new Uri(normalizedBase, "Account/AcceptInvitation").AbsoluteUri;
+        }
+
+        return navigation.ToAbsoluteUri("Account/AcceptInvitation").AbsoluteUri;
     }
 }
