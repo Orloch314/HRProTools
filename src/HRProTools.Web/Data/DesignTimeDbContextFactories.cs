@@ -9,7 +9,7 @@ public sealed class ApplicationDbContextFactory : IDesignTimeDbContextFactory<Ap
     {
         var options = new DbContextOptionsBuilder<ApplicationDbContext>()
             .UseNpgsql(
-                "Host=localhost;Database=hrprotools;Username=hrprotools_app",
+                "Host=127.0.0.1;Port=5435;Database=hrprotool;Username=hrprotool_app",
                 npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history", "auth"))
             .Options;
         return new ApplicationDbContext(options);
@@ -21,7 +21,7 @@ public sealed class TenantDesignTimeDbContextFactory : IDesignTimeDbContextFacto
     public TenantDbContext CreateDbContext(string[] args)
     {
         var options = new DbContextOptionsBuilder<TenantDbContext>()
-            .UseNpgsql("Host=localhost;Database=hrprotools;Username=hrprotools_app;Search Path=tenant_template")
+            .UseNpgsql("Host=127.0.0.1;Port=5435;Database=hrprotool;Username=hrprotool_app;Search Path=tenant_template")
             .Options;
         return new TenantDbContext(options);
     }

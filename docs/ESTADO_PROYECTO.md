@@ -41,12 +41,14 @@
 
 ### PostgreSQL local identificado
 
-- Cadena efectiva de Development: host `127.0.0.1`, puerto `5432`, base `hrprotools`; la contraseña permanece solamente en User Secrets.
-- Contenedor correspondiente: `tributa-postgres-1`, imagen `postgres:18`, publicacion `127.0.0.1:5432 -> 5432`.
+- Entorno corregido despues de la prueba manual: container dedicado `hrprotool-postgres`, base `hrprotool` y usuario aplicativo `hrprotool_app`.
+- Cadena efectiva de Development: host `127.0.0.1`, puerto `5435`, base `hrprotool`; la contraseña aleatoria permanece solamente en User Secrets.
+- Imagen `postgres:18`, publicacion `127.0.0.1:5435 -> 5432`, reinicio `unless-stopped` y volumen persistente `hrprotool-postgres-data`.
 - Version verificada: PostgreSQL `18.6`.
 - Schemas encontrados: `auth`, `platform`, `hr_t_6e24549785b64c81bbcac3472cbb98c4` y `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`.
 - La prueba manual esta en el tenant `A` / `Gruppo Prova`, schema `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`, empresa `AB` / `Prova SA`. El administrador `Roberto` permanece inactivo y no confirmado porque la invitacion anterior no fue completada.
-- Inspeccion directa: `docker exec -it tributa-postgres-1 psql -U tributa_dev -d hrprotools`.
+- Los datos se copiaron con `pg_dump`/`pg_restore` sin eliminar la fuente; la aplicacion ya no usa la instancia compartida anterior.
+- Inspeccion directa: `docker exec -it hrprotool-postgres psql -U hrprotool_app -d hrprotool`.
 
 ### Revision SMTP y correo no deseado
 
@@ -68,7 +70,7 @@
 ## Configuracion local
 
 - La cadena PostgreSQL y las credenciales bootstrap estan en User Secrets del proyecto Web; no se versionan.
-- Base local: `hrprotools`, independiente de las otras bases del contenedor PostgreSQL 18 existente.
+- Base local: `hrprotool`, alojada en su propio container y volumen PostgreSQL 18.
 - Para ejecutar: `dotnet run --project src/HRProTools.Web`.
 - Para habilitar correo real, un administrador global debe completar `/admin/smtp` con un servidor SMTP de prueba valido.
 - El tenant sintetico `QA27` y su usuario invitado permanecen en la base local como evidencia reproducible de la prueba funcional.
