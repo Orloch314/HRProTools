@@ -1,0 +1,87 @@
+@page "/admin/grupos"
+@attribute [Authorize(Policy = AppPolicies.GlobalAdministration)]
+@inject ApplicationDbContext GlobalDb
+@inject TenantProvisioningService Provisioning
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Grupos empresariales - HR ProTools</PageTitle>
+
+<div class="page-heading">
+    <div><span class="eyebrow">Administracion global</span><h1>Grupos empresariales</h1><p>Cree el grupo, su primer esquema, empresa y administrador en un solo recorrido.</p></div>
+    <button class="btn-primary" @onclick="() => showForm = !showForm">@(showForm ? "Cerrar" : "Nuevo grupo")</button>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
+
+@if (showForm)
+{
+    <section class="panel">
+        <h2>Nuevo grupo y primera empresa</h2>
+        <EditForm Model="model" OnValidSubmit="CreateAsync" FormName="create-tenant">
+            <DataAnnotationsValidator /><ValidationSummary />
+            <div class="form-grid">
+                <label><span>Codigo del grupo</span><InputText @bind-Value="model.GroupCode" /></label>
+                <label><span>Nombre del grupo</span><InputText @bind-Value="model.GroupName" /></label>
+                <label><span>Codigo de empresa</span><InputText @bind-Value="model.CompanyCode" /></label>
+                <label><span>Razon social</span><InputText @bind-Value="model.CompanyName" /></label>
+                <label><span>RUC</span><InputText @bind-Value="model.TaxId" /></label>
+                <label><span>Administrador tenant</span><InputText @bind-Value="model.AdministratorName" /></label>
+                <label><span>Email del administrador</span><InputText type="email" @bind-Value="model.AdministratorEmail" /></label>
+            </div>
+            <button class="btn-primary" type="submit" disabled="@saving">@(saving ? "Creando..." : "Crear grupo e invitar")</button>
+        </EditForm>
+    </section>
+}
+
+@if (!string.IsNullOrWhiteSpace(invitationLink))
+{
+    <section class="panel invitation-box">
+        <h2>Invitacion preparada</h2>
+        <p>SMTP aun no esta configurado. El administrador global puede usar temporalmente este enlace para completar la prueba manual:</p>
+        <a href="@invitationLink">@invitationLink</a>
+    </section>
+}
+
+<section class="panel">
+    <div class="panel-title"><h2>Grupos registrados</h2><span>@tenants.Count</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Grupo</th><th>Esquema</th><th>Estado</th><th>Actualizado</th></tr></thead>
+        <tbody>
+        @if (tenants.Count == 0) { <tr><td colspan="5" class="empty">Todavia no hay grupos.</td></tr> }
+        @foreach (var tenant in tenants)
+        {
+            <tr><td><strong>@tenant.Code</strong></td><td>@tenant.Name</td><td><code>@tenant.SchemaName</code></td><td><span class="status @tenant.Status.ToLowerInvariant()">@tenant.Status</span></td><td>@tenant.UpdatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td></tr>
+            @if (!string.IsNullOrWhiteSpace(tenant.ProvisioningError)) { <tr><td></td><td colspan="4" class="error-detail">@tenant.ProvisioningError</td></tr> }
+        }
+        </tbody></table></div>
+</section>
+
+@code {
+    private readonly CreateTenantModel model = new();
+    private List<Tenant> tenants = [];
+    private bool showForm = true, saving, hasError;
+    private string message = string.Empty, invitationLink = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+
+    private async Task LoadAsync() => tenants = await GlobalDb.Tenants.AsNoTracking().OrderBy(x => x.Name).ToListAsync();
+
+    private async Task CreateAsync()
+    {
+        saving = true; hasError = false; message = invitationLink = string.Empty;
+        try
+        {
+            var state = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(state.User) ?? throw new InvalidOperationException("Sesion invalida.");
+            var result = await Provisioning.CreateAsync(model, user.Id);
+            invitationLink = result.EmailSent ? string.Empty : result.InvitationLink;
+            message = result.EmailSent ? "Grupo creado e invitacion enviada." : "Grupo creado. Configure SMTP o utilice el enlace de prueba manual.";
+            showForm = false;
+            await LoadAsync();
+        }
+        catch (Exception ex) { hasError = true; message = ex.Message; await LoadAsync(); }
+        finally { saving = false; }
+    }
+}

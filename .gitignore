@@ -1,0 +1,42 @@
+# Build output
+bin/
+obj/
+artifacts/
+TestResults/
+coverage/
+*.trx
+
+# IDE and user files
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local configuration and secrets
+appsettings.Local.json
+appsettings.*.local.json
+.env
+.env.*
+secrets.json
+storage/
+keys/
+
+# EF and local databases
+*.db
+*.db-shm
+*.db-wal
+
+# Logs and temporary files
+*.log
+*.tmp
+*.bak
+*.swp
+~$*
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini

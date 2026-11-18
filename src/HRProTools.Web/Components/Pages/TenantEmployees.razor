@@ -1,0 +1,57 @@
+@page "/tenant/funcionarios"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+@inject TenantDataService Data
+
+<PageTitle>Funcionarios - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administracion tenant</span><h1>Nomina basica</h1><p>Altas, datos personales, movimientos organizativos y salarios vigentes.</p></div><button class="btn-primary" @onclick="() => showCreate=!showCreate">@(showCreate?"Cerrar":"Nuevo funcionario")</button></div>
+@if (!string.IsNullOrWhiteSpace(message)){<div class="notice @(hasError?"notice-error":"notice-success")">@message</div>}
+
+@if(showCreate)
+{
+<section class="panel"><h2>Alta de funcionario</h2><EditForm Model="create" OnValidSubmit="CreateAsync" FormName="create-employee"><DataAnnotationsValidator/><ValidationSummary/>
+    <div class="form-grid">
+        <label><span>Legajo</span><InputText @bind-Value="create.EmployeeNumber"/></label><label><span>Cedula</span><InputText @bind-Value="create.DocumentNumber"/></label>
+        <label><span>Nombres</span><InputText @bind-Value="create.GivenNames"/></label><label><span>Apellidos</span><InputText @bind-Value="create.FamilyNames"/></label>
+        <label><span>Fecha de ingreso</span><InputDate @bind-Value="create.StartDate"/></label><label><span>Empresa</span><InputSelect @bind-Value="create.CompanyId"><option value="">Seleccione</option>@foreach(var x in ActiveCompanies){<option value="@x.Id">@x.LegalName</option>}</InputSelect></label>
+        <label><span>Departamento</span><InputSelect @bind-Value="create.DepartmentId"><option value="">Seleccione</option>@foreach(var x in ActiveDepartments.Where(x=>x.CompanyId==create.CompanyId)){<option value="@x.Id">@x.Name</option>}</InputSelect></label>
+        <label><span>Cargo</span><InputSelect @bind-Value="create.PositionId"><option value="">Seleccione</option>@foreach(var x in ActivePositions.Where(x=>x.CompanyId==create.CompanyId)){<option value="@x.Id">@x.Name</option>}</InputSelect></label>
+        <label><span>Email</span><InputText type="email" @bind-Value="create.Email"/></label><label><span>Celular</span><InputText @bind-Value="create.Phone"/></label>
+        <label><span>Salario bruto</span><InputNumber @bind-Value="create.GrossSalary"/></label>
+    </div><button class="btn-primary" type="submit">Registrar funcionario</button>
+</EditForm></section>
+}
+
+@if(selected is not null)
+{
+<section class="panel editor-accent"><div class="panel-title"><h2>Editar @selected.EmployeeNumber - @selected.FullName</h2><button class="btn-secondary" @onclick="()=>selected=null">Cerrar</button></div>
+    <h3>Datos basicos</h3><div class="form-grid"><label><span>Nombres</span><input @bind="editGivenNames"/></label><label><span>Apellidos</span><input @bind="editFamilyNames"/></label><label><span>Email</span><input type="email" @bind="editEmail"/></label><label><span>Celular</span><input @bind="editPhone"/></label></div><button class="btn-primary" @onclick="UpdatePersonAsync">Guardar datos</button>
+    @if(selected.Status==EmploymentStatuses.Active)
+    {
+        <hr/><h3>Cambio de departamento o cargo</h3><div class="form-grid"><label><span>Departamento</span><select @bind="changeDepartmentId">@foreach(var x in ActiveDepartments.Where(x=>x.CompanyId==selected.CompanyId)){<option value="@x.Id">@x.Name</option>}</select></label><label><span>Cargo</span><select @bind="changePositionId">@foreach(var x in ActivePositions.Where(x=>x.CompanyId==selected.CompanyId)){<option value="@x.Id">@x.Name</option>}</select></label><label><span>Vigente desde</span><InputDate @bind-Value="effectiveDate"/></label></div><button class="btn-secondary" @onclick="ChangeAssignmentAsync">Registrar cambio</button>
+        <hr/><h3>Nuevo salario</h3><div class="form-grid"><label><span>Salario bruto</span><InputNumber @bind-Value="newSalary"/></label><label><span>Vigente desde</span><InputDate @bind-Value="salaryDate"/></label></div><button class="btn-secondary" @onclick="ChangeSalaryAsync">Registrar salario</button>
+        <hr/><h3>Cerrar relacion laboral</h3><div class="form-grid"><label><span>Fecha de cierre</span><InputDate @bind-Value="closeDate"/></label><label><span>Motivo</span><input @bind="closeReason"/></label></div><button class="btn-danger" @onclick="CloseEmploymentAsync">Cerrar vinculo</button>
+    }
+</section>
+}
+
+<section class="panel"><div class="panel-title"><h2>Funcionarios</h2><span>@employees.Count</span></div><div class="table-wrap"><table><thead><tr><th>Legajo</th><th>Funcionario</th><th>Empresa</th><th>Departamento / cargo</th><th>Ingreso</th><th>Salario</th><th>Estado</th><th></th></tr></thead><tbody>
+@if(employees.Count==0){<tr><td colspan="8" class="empty">No hay funcionarios registrados.</td></tr>}
+@foreach(var x in employees){<tr><td><strong>@x.EmployeeNumber</strong><small>@x.DocumentNumber</small></td><td>@x.FullName<small>@x.Email · @x.Phone</small></td><td>@x.Company</td><td>@x.Department<small>@x.Position</small></td><td>@x.StartDate.ToString("dd/MM/yyyy")</td><td>@x.GrossSalary.ToString("N0")</td><td><span class="status @(x.Status==EmploymentStatuses.Active?"active":"inactive")">@x.Status</span></td><td><button class="link-button" @onclick="()=>Select(x)">Editar</button></td></tr>}
+</tbody></table></div></section>
+
+@code{
+    private EmployeeForm create=new(); private List<Company> companies=[]; private List<Department> departments=[]; private List<Position> positions=[]; private List<EmployeeRow> employees=[];
+    private bool showCreate=true,hasError; private string message=string.Empty; private EmployeeRow? selected;
+    private string editGivenNames="",editFamilyNames="",editEmail="",editPhone="",closeReason=""; private Guid changeDepartmentId,changePositionId;
+    private DateOnly effectiveDate=DateOnly.FromDateTime(DateTime.Today),salaryDate=DateOnly.FromDateTime(DateTime.Today),closeDate=DateOnly.FromDateTime(DateTime.Today); private decimal newSalary;
+    private IEnumerable<Company> ActiveCompanies=>companies.Where(x=>x.IsActive); private IEnumerable<Department> ActiveDepartments=>departments.Where(x=>x.IsActive); private IEnumerable<Position> ActivePositions=>positions.Where(x=>x.IsActive);
+    protected override async Task OnInitializedAsync()=>await LoadAsync();
+    private async Task LoadAsync(){companies=await Data.GetCompaniesAsync(false);departments=await Data.GetDepartmentsAsync();positions=await Data.GetPositionsAsync();employees=await Data.GetEmployeesAsync();if(selected is not null)selected=employees.SingleOrDefault(x=>x.EmploymentId==selected.EmploymentId);}
+    private async Task RunAsync(Func<Task> action,string success){try{await action();hasError=false;message=success;await LoadAsync();}catch(Exception ex){hasError=true;message=ex.Message;}}
+    private async Task CreateAsync()=>await RunAsync(async()=>{await Data.CreateEmployeeAsync(create);create=new();showCreate=false;},"Funcionario registrado.");
+    private void Select(EmployeeRow x){selected=x;editGivenNames=x.GivenNames;editFamilyNames=x.FamilyNames;editEmail=x.Email;editPhone=x.Phone;changeDepartmentId=x.DepartmentId;changePositionId=x.PositionId;newSalary=x.GrossSalary;effectiveDate=salaryDate=closeDate=DateOnly.FromDateTime(DateTime.Today);closeReason="";}
+    private async Task UpdatePersonAsync()=>await RunAsync(()=>Data.UpdatePersonAsync(selected!.EmploymentId,editGivenNames,editFamilyNames,editEmail,editPhone),"Datos actualizados.");
+    private async Task ChangeAssignmentAsync()=>await RunAsync(()=>Data.ChangeAssignmentAsync(selected!.EmploymentId,changeDepartmentId,changePositionId,effectiveDate),"Cambio organizativo registrado.");
+    private async Task ChangeSalaryAsync()=>await RunAsync(()=>Data.ChangeSalaryAsync(selected!.EmploymentId,newSalary,salaryDate),"Historial salarial actualizado.");
+    private async Task CloseEmploymentAsync()=>await RunAsync(()=>Data.CloseEmploymentAsync(selected!.EmploymentId,closeDate,closeReason),"Relacion laboral cerrada sin eliminar su historial.");
+}

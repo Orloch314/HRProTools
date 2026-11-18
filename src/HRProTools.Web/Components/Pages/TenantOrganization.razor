@@ -1,0 +1,60 @@
+@page "/tenant/organizacion"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+@inject TenantDataService Data
+
+<PageTitle>Organizacion - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administracion tenant</span><h1>Organizacion</h1><p>Empresas, departamentos y cargos del grupo.</p></div></div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
+
+<div class="tabs"><button class="@(tab == "company" ? "active" : "")" @onclick="ShowCompanies">Empresas</button><button class="@(tab == "department" ? "active" : "")" @onclick="ShowDepartments">Departamentos</button><button class="@(tab == "position" ? "active" : "")" @onclick="ShowPositions">Cargos</button></div>
+
+@if (tab == "company")
+{
+    <section class="panel"><h2>@(company.Id is null ? "Nueva empresa" : "Editar empresa")</h2>
+        <EditForm Model="company" OnValidSubmit="SaveCompanyAsync" FormName="company"><DataAnnotationsValidator /><ValidationSummary />
+            <div class="form-grid"><label><span>Codigo</span><InputText @bind-Value="company.Code" /></label><label><span>Razon social</span><InputText @bind-Value="company.LegalName" /></label><label><span>RUC</span><InputText @bind-Value="company.TaxId" /></label><label><span>Email</span><InputText type="email" @bind-Value="company.Email" /></label><label><span>Telefono</span><InputText @bind-Value="company.Phone" /></label><label><span>Direccion</span><InputText @bind-Value="company.Address" /></label></div>
+            <button class="btn-primary" type="submit">Guardar</button> @if (company.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCompany">Cancelar</button> }
+        </EditForm>
+    </section>
+    <section class="panel"><div class="panel-title"><h2>Empresas</h2><span>@companies.Count</span></div><div class="table-wrap"><table><thead><tr><th>Codigo</th><th>Razon social</th><th>RUC</th><th>Contacto</th><th></th></tr></thead><tbody>@foreach(var item in companies){<tr><td>@item.Code</td><td>@item.LegalName</td><td>@item.TaxId</td><td>@item.Email<br/>@item.Phone</td><td><button class="link-button" @onclick="() => EditCompany(item)">Editar</button></td></tr>}</tbody></table></div></section>
+}
+else if (tab == "department")
+{
+    <section class="panel"><h2>@(catalog.Id is null ? "Nuevo departamento" : "Editar departamento")</h2>
+        <EditForm Model="catalog" OnValidSubmit="SaveDepartmentAsync" FormName="department"><DataAnnotationsValidator /><ValidationSummary />
+            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Codigo</span><InputText @bind-Value="catalog.Code" /></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label></div>
+            <button class="btn-primary" type="submit">Guardar</button> @if (catalog.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCatalog">Cancelar</button> }
+        </EditForm>
+    </section>
+    <section class="panel"><div class="panel-title"><h2>Departamentos</h2><span>@departments.Count</span></div><div class="table-wrap"><table><thead><tr><th>Empresa</th><th>Codigo</th><th>Nombre</th><th>Estado</th><th></th></tr></thead><tbody>@foreach(var item in departments){<tr><td>@item.Company.LegalName</td><td>@item.Code</td><td>@item.Name</td><td><span class="status @(item.IsActive ? "active" : "inactive")">@(item.IsActive ? "Activo" : "Inactivo")</span></td><td><button class="link-button" @onclick="() => EditDepartment(item)">Editar</button><button class="link-button" @onclick="() => ToggleDepartmentAsync(item.Id)">@(item.IsActive ? "Desactivar" : "Activar")</button></td></tr>}</tbody></table></div></section>
+}
+else
+{
+    <section class="panel"><h2>@(catalog.Id is null ? "Nuevo cargo" : "Editar cargo")</h2>
+        <EditForm Model="catalog" OnValidSubmit="SavePositionAsync" FormName="position"><DataAnnotationsValidator /><ValidationSummary />
+            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Codigo</span><InputText @bind-Value="catalog.Code" /></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label><label><span>Nivel</span><InputText @bind-Value="catalog.Level" /></label></div>
+            <button class="btn-primary" type="submit">Guardar</button> @if (catalog.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCatalog">Cancelar</button> }
+        </EditForm>
+    </section>
+    <section class="panel"><div class="panel-title"><h2>Cargos</h2><span>@positions.Count</span></div><div class="table-wrap"><table><thead><tr><th>Empresa</th><th>Codigo</th><th>Nombre</th><th>Nivel</th><th>Estado</th><th></th></tr></thead><tbody>@foreach(var item in positions){<tr><td>@item.Company.LegalName</td><td>@item.Code</td><td>@item.Name</td><td>@item.Level</td><td><span class="status @(item.IsActive ? "active" : "inactive")">@(item.IsActive ? "Activo" : "Inactivo")</span></td><td><button class="link-button" @onclick="() => EditPosition(item)">Editar</button><button class="link-button" @onclick="() => TogglePositionAsync(item.Id)">@(item.IsActive ? "Desactivar" : "Activar")</button></td></tr>}</tbody></table></div></section>
+}
+
+@code {
+    private string tab = "company", message = string.Empty; private bool hasError;
+    private CompanyForm company = new(); private CatalogForm catalog = new();
+    private List<Company> companies = []; private List<Department> departments = []; private List<Position> positions = [];
+    private IEnumerable<Company> ActiveCompanies => companies.Where(x => x.IsActive);
+    protected override async Task OnInitializedAsync() => await LoadAsync();
+    private async Task LoadAsync(){ companies=await Data.GetCompaniesAsync(); departments=await Data.GetDepartmentsAsync(); positions=await Data.GetPositionsAsync(); }
+    private async Task RunAsync(Func<Task> action, string success){ try{await action();hasError=false;message=success;await LoadAsync();}catch(Exception ex){hasError=true;message=ex.Message;} }
+    private async Task SaveCompanyAsync()=>await RunAsync(async()=>{await Data.SaveCompanyAsync(company);ResetCompany();},"Empresa guardada.");
+    private async Task SaveDepartmentAsync()=>await RunAsync(async()=>{await Data.SaveDepartmentAsync(catalog);ResetCatalog();},"Departamento guardado.");
+    private async Task SavePositionAsync()=>await RunAsync(async()=>{await Data.SavePositionAsync(catalog);ResetCatalog();},"Cargo guardado.");
+    private async Task ToggleDepartmentAsync(Guid id)=>await RunAsync(()=>Data.ToggleDepartmentAsync(id),"Estado del departamento actualizado.");
+    private async Task TogglePositionAsync(Guid id)=>await RunAsync(()=>Data.TogglePositionAsync(id),"Estado del cargo actualizado.");
+    private void EditCompany(Company x)=>company=new(){Id=x.Id,Code=x.Code,LegalName=x.LegalName,TaxId=x.TaxId,Email=x.Email,Phone=x.Phone,Address=x.Address};
+    private void EditDepartment(Department x){tab="department";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Code=x.Code,Name=x.Name};}
+    private void EditPosition(Position x){tab="position";catalog=new(){Id=x.Id,CompanyId=x.CompanyId,Code=x.Code,Name=x.Name,Level=x.Level};}
+    private void ResetCompany()=>company=new(); private void ResetCatalog()=>catalog=new();
+    private void ShowCompanies(){tab="company";ResetCatalog();} private void ShowDepartments(){tab="department";ResetCatalog();} private void ShowPositions(){tab="position";ResetCatalog();}
+}

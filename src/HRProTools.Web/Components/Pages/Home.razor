@@ -1,0 +1,5 @@
+﻿@page "/"
+
+<PageTitle>HR ProTools</PageTitle>
+
+<div class="welcome"><img src="images/logo.png" alt="HR ProTools"/><h1>Gestion de Recursos Humanos, clara y centralizada.</h1><p>Administre grupos empresariales, organizacion y nomina desde una aplicacion segura y sencilla.</p><AuthorizeView><Authorized><a class="btn-primary" href="@(context.User.IsInRole(AppRoles.GlobalAdministrator)?"admin/grupos":"tenant/funcionarios")">Ir al panel</a></Authorized><NotAuthorized><a class="btn-primary" href="Account/Login">Iniciar sesion</a></NotAuthorized></AuthorizeView></div>

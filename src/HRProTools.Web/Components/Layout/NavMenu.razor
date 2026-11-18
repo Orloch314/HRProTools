@@ -1,0 +1,18 @@
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<div class="brand"><img src="images/logo.png" alt="HR ProTools" /></div>
+<input type="checkbox" title="Abrir navegacion" class="navbar-toggler" />
+<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
+<nav>
+    <AuthorizeView Roles="@AppRoles.GlobalAdministrator"><Authorized><span class="nav-section">Administracion global</span><NavLink href="admin/grupos">▦ Grupos empresariales</NavLink><NavLink href="admin/smtp">✉ Correo SMTP</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView Roles="@AppRoles.TenantAdministrator"><Authorized><span class="nav-section">Gestion del grupo</span><NavLink href="tenant/funcionarios">♟ Funcionarios</NavLink><NavLink href="tenant/organizacion">▤ Organizacion</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView><Authorized><span class="nav-section">Cuenta</span><NavLink href="Account/Manage">● @context.User.Identity?.Name</NavLink><form action="Account/Logout" method="post"><AntiforgeryToken/><input type="hidden" name="ReturnUrl" value="@currentUrl"/><button type="submit">↪ Cerrar sesion</button></form></Authorized><NotAuthorized><NavLink href="Account/Login">→ Iniciar sesion</NavLink></NotAuthorized></AuthorizeView>
+</nav>
+</div>
+@code{
+    private string? currentUrl;
+    protected override void OnInitialized(){currentUrl=Navigation.ToBaseRelativePath(Navigation.Uri);Navigation.LocationChanged+=Changed;}
+    private void Changed(object? sender,LocationChangedEventArgs e){currentUrl=Navigation.ToBaseRelativePath(e.Location);StateHasChanged();}
+    public void Dispose()=>Navigation.LocationChanged-=Changed;
+}

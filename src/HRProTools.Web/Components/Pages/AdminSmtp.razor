@@ -1,0 +1,33 @@
+@page "/admin/smtp"
+@attribute [Authorize(Policy = AppPolicies.GlobalAdministration)]
+@inject SmtpSettingsService Smtp
+@inject AuthenticationStateProvider AuthenticationStateProvider
+
+<PageTitle>SMTP - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administracion global</span><h1>Correo saliente</h1><p>Configuracion protegida para invitaciones y recuperacion de acceso.</p></div></div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
+<section class="panel narrow">
+    <EditForm Model="model" OnValidSubmit="SaveAsync" FormName="smtp-settings">
+        <DataAnnotationsValidator /><ValidationSummary />
+        <div class="form-grid">
+            <label><span>Servidor</span><InputText @bind-Value="model.Host" /></label>
+            <label><span>Puerto</span><InputNumber @bind-Value="model.Port" /></label>
+            <label><span>Seguridad</span><InputSelect @bind-Value="model.SecurityMode"><option>StartTls</option><option>SslOnConnect</option><option>None</option></InputSelect></label>
+            <label><span>Usuario</span><InputText @bind-Value="model.Username" /></label>
+            <label><span>Contraseña @(model.HasStoredPassword ? "(guardada)" : "")</span><InputText type="password" @bind-Value="model.Password" /></label>
+            <label><span>Email remitente</span><InputText type="email" @bind-Value="model.FromAddress" /></label>
+            <label><span>Nombre remitente</span><InputText @bind-Value="model.FromName" /></label>
+        </div>
+        <button class="btn-primary" type="submit">Guardar configuracion</button>
+    </EditForm>
+</section>
+@code {
+    private SmtpSettingsModel model = new();
+    private string message = string.Empty; private bool hasError;
+    protected override async Task OnInitializedAsync() => model = await Smtp.LoadAsync();
+    private async Task SaveAsync()
+    {
+        try { var state = await AuthenticationStateProvider.GetAuthenticationStateAsync(); await Smtp.SaveAsync(model, state.User.Identity?.Name ?? "administrador"); hasError = false; message = "Configuracion SMTP guardada."; }
+        catch (Exception ex) { hasError = true; message = ex.Message; }
+    }
+}
