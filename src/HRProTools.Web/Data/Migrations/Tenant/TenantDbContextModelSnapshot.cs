@@ -356,6 +356,44 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.TenantBranding", b =>
+                {
+                    b.Property<int>("Id")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("AntivirusStatus")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<byte[]>("LogoData")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("LogoContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<string>("LogoFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<DateTimeOffset?>("ScannedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("tenant_branding", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_tenant_branding_singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Department", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Company", "Company")

@@ -1,0 +1,40 @@
+@implements IDisposable
+@inject TenantBrandingService Branding
+
+@if (logo is not null)
+{
+    <img class="tenant-header-logo" src="@LogoUrl" alt="Logo del grupo empresarial" />
+    <span class="header-brand-separator" aria-hidden="true"></span>
+}
+
+@code {
+    private TenantLogoInfo? logo;
+
+    private string LogoUrl => $"/tenant/logo?v={logo!.UpdatedAtUtc.ToUnixTimeMilliseconds()}";
+
+    protected override async Task OnInitializedAsync()
+    {
+        Branding.Changed += BrandingChanged;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        try
+        {
+            logo = await Branding.GetLogoInfoAsync();
+        }
+        catch (UnauthorizedAccessException)
+        {
+            logo = null;
+        }
+    }
+
+    private void BrandingChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadAsync();
+        StateHasChanged();
+    });
+
+    public void Dispose() => Branding.Changed -= BrandingChanged;
+}

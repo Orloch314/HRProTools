@@ -14,13 +14,15 @@
 - Configuracion SMTP protegida con Data Protection; secretos locales fuera del repositorio.
 - Organizacion tenant: empresas, departamentos y cargos con altas, edicion y activacion/desactivacion controlada.
 - Personas y vinculos laborales con legajo unico asignado automaticamente, asignaciones historicas, historial salarial y cierre de relacion laboral.
+- Ficha individual del funcionario con datos generales, historial laboral e historial salarial, respetando autorizaciones y aislamiento tenant.
+- Identidad visual por grupo empresarial con logo propio persistido en el schema tenant y mostrado en el encabezado compartido.
 - Interfaz responsive basada en la identidad visual proporcionada.
 - Inicializacion del repositorio Git `main` y remoto oficial `https://github.com/Orloch314/HRProTools`.
 
 ## Verificacion realizada
 
 - `dotnet build`: correcta, 0 advertencias y 0 errores.
-- `dotnet test`: 7 pruebas superadas, 0 fallidas, 0 omitidas.
+- `dotnet test`: 9 pruebas superadas, 0 fallidas, 0 omitidas.
 - Prueba de integracion PostgreSQL: crea y migra dos schemas temporales, inserta datos distintos, verifica aislamiento y elimina solamente esos schemas.
 - Prueba de integridad laboral: confirma legajo unico y preservacion del historial organizativo y salarial con una sola vigencia abierta.
 - Prueba funcional en navegador: login global, formulario interactivo y provisioning completo del grupo sintetico `QA27`.
@@ -84,12 +86,33 @@
 - Mostrar/ocultar contraseña en navegador sin alterar el contenido.
 - Asignacion correlativa posterior a codigos y legajos existentes, y ejecucion real de la consulta de nomina sobre PostgreSQL.
 
+### Ficha e historiales del funcionario
+
+- Desde `Funcionarios`, la accion `Ficha` abre `/tenant/funcionarios/{employmentId}`.
+- La ficha se organiza en `Datos generales`, `Historial laboral` e `Historial salarial`; los registros aparecen del mas reciente al mas antiguo y la vigencia actual queda destacada.
+- El historial laboral muestra legajo, empresa, departamento, cargo, fechas, estado y motivo, e incluye vinculos laborales anteriores de la misma persona dentro del tenant cuando existen.
+- El historial salarial reutiliza las vigencias existentes y muestra salario bruto, moneda, fechas y estado. Para el MVP la moneda presentada es PYG, coherente con el modelo salarial actual.
+- La lectura salarial usa una autorizacion separada de la ficha laboral; el rol de autorizador de solicitudes no recibe acceso salarial automatico.
+- La prueba PostgreSQL confirma que los cambios reales de departamento, cargo y salario cierran la vigencia anterior y crean una nueva sin sobrescritura ni superposiciones. Renombrar un departamento o cargo no genera una nueva asignacion historica.
+
+### Identidad visual del grupo empresarial
+
+- El administrador tenant configura el logo desde `Identidad visual`, ruta `/tenant/identidad-visual`.
+- La pantalla permite seleccionar PNG, JPEG o WebP, previsualizar, guardar o sustituir el logo y eliminarlo. El limite es 2 MB y el backend valida la firma real del contenido, no solamente el nombre o tipo declarado.
+- El logo se guarda como `bytea` con tipo MIME, nombre y metadatos de escaneo en `tenant_branding`, dentro del schema del tenant. La migracion se aplico a los tenants existentes `A` y `QA27` sin modificar sus datos funcionales.
+- El encabezado tenant muestra logo, separador discreto, nombre HR ProTools y subtitulo sin deformar la imagen; conserva el encabezado anterior, sin huecos ni imagen generica, cuando no existe logo. La administracion global mantiene la identidad propia de HR ProTools.
+- La consulta y modificacion derivan siempre el tenant de la identidad autenticada; no se acepta un tenant por parametro de ruta. Solamente `TenantAdministrator` puede guardar o eliminar el logo.
+- Las cargas pasan por ClamAV mediante el protocolo `INSTREAM`. En Development puede quedar explicitamente como no escaneado si no hay daemon configurado; en Production la carga falla de forma segura si ClamAV no esta configurado o no esta disponible.
+- Para produccion debe configurarse al menos `Antivirus__ClamAv__Host` (por ejemplo `127.0.0.1`); el puerto predeterminado es `3310`. No se incorporaron servicios externos ni dependencias de almacenamiento.
+- Las pruebas verifican firmas validas e invalidas, limite de tamaño, exigencia de antivirus en Production, persistencia tras recrear el contexto, sustitucion, eliminacion y aislamiento entre dos schemas tenant.
+
 ## Configuracion local
 
 - La cadena PostgreSQL y las credenciales bootstrap estan en User Secrets del proyecto Web; no se versionan.
 - Base local: `hrprotool`, alojada en su propio container y volumen PostgreSQL 18.
 - Para ejecutar: `dotnet run --project src/HRProTools.Web`.
 - Para habilitar correo real, un administrador global debe completar `/admin/smtp` con un servidor SMTP de prueba valido.
+- Para habilitar cargas de logo en produccion, ClamAV debe estar activo y accesible mediante `Antivirus__ClamAv__Host` y, si corresponde, `Antivirus__ClamAv__Port`.
 - El tenant sintetico `QA27` y su usuario invitado permanecen en la base local como evidencia reproducible de la prueba funcional.
 
 ## Pendientes y bloqueos reales

@@ -53,7 +53,9 @@ builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
     options.TokenLifespan = TimeSpan.FromHours(24));
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AppPolicies.GlobalAdministration, policy => policy.RequireRole(AppRoles.GlobalAdministrator))
-    .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator));
+    .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator))
+    .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator))
+    .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator));
 
 var keyPath = Path.GetFullPath(builder.Configuration["DataProtection:KeyPath"] ?? "storage/keys", builder.Environment.ContentRootPath);
 Directory.CreateDirectory(keyPath);
@@ -68,6 +70,9 @@ builder.Services.AddSingleton<TenantDbContextFactory>();
 builder.Services.AddScoped<TenantProvisioningService>();
 builder.Services.AddScoped<TenantDataService>();
 builder.Services.AddScoped<InvitationAcceptanceService>();
+builder.Services.Configure<ClamAvOptions>(builder.Configuration.GetSection("Antivirus:ClamAv"));
+builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>();
+builder.Services.AddScoped<TenantBrandingService>();
 
 var app = builder.Build();
 
@@ -112,6 +117,7 @@ app.MapStaticAssets();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
+app.MapTenantLogo();
 
 // Add additional endpoints required by the Identity /Account Razor components.
 app.MapAdditionalIdentityEndpoints();

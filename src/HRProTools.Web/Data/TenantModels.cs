@@ -104,3 +104,16 @@ public sealed class SalaryHistory
     public DateOnly? ValidTo { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
+
+public sealed class TenantBranding
+{
+    public const int SingletonId = 1;
+
+    public int Id { get; set; } = SingletonId;
+    public byte[] LogoData { get; set; } = [];
+    public string LogoContentType { get; set; } = string.Empty;
+    public string LogoFileName { get; set; } = string.Empty;
+    public string AntivirusStatus { get; set; } = string.Empty;
+    public DateTimeOffset? ScannedAtUtc { get; set; }
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}

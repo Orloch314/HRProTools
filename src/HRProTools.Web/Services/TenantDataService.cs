@@ -198,6 +198,24 @@ public sealed class TenantDataService(
             return await TenantEmployeeQueries.ListAsync(db, cancellationToken);
     }
 
+    public async Task<EmployeeHistoryProfile?> GetEmployeeHistoryAsync(
+        Guid employmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var (_, db) = await OpenAsync(cancellationToken);
+        await using (db)
+            return await TenantEmployeeHistoryQueries.GetProfileAsync(db, employmentId, cancellationToken);
+    }
+
+    public async Task<List<SalaryHistoryRow>> GetEmployeeSalaryHistoryAsync(
+        Guid employmentId,
+        CancellationToken cancellationToken = default)
+    {
+        var (_, db) = await OpenAsync(cancellationToken);
+        await using (db)
+            return await TenantEmployeeHistoryQueries.GetSalaryHistoryAsync(db, employmentId, cancellationToken);
+    }
+
     public Task<string> CreateEmployeeAsync(EmployeeForm form, CancellationToken cancellationToken = default) =>
         CreateEmployeeCoreAsync(form, null, cancellationToken);
 

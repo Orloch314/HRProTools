@@ -36,7 +36,7 @@
 
 <section class="panel"><div class="panel-title"><h2>Funcionarios</h2><span>@employees.Count</span></div><div class="table-wrap"><table><thead><tr><th>Legajo</th><th>Funcionario</th><th>Empresa</th><th>Departamento / cargo</th><th>Ingreso</th><th>Salario</th><th>Estado</th><th></th></tr></thead><tbody>
 @if(employees.Count==0){<tr><td colspan="8" class="empty">No hay funcionarios registrados.</td></tr>}
-@foreach(var x in employees){<tr><td><strong>@x.EmployeeNumber</strong><small>@x.DocumentNumber</small></td><td>@x.FullName<small>@x.Email · @x.Phone</small></td><td>@x.Company</td><td>@x.Department<small>@x.Position</small></td><td>@x.StartDate.ToString("dd/MM/yyyy")</td><td>@x.GrossSalary.ToString("N0")</td><td><span class="status @(x.Status==EmploymentStatuses.Active?"active":"inactive")">@x.Status</span></td><td><button class="link-button" @onclick="()=>Select(x)">Editar</button></td></tr>}
+@foreach(var x in employees){<tr><td><strong>@x.EmployeeNumber</strong><small>@x.DocumentNumber</small></td><td>@x.FullName<small>@x.Email · @x.Phone</small></td><td>@x.Company</td><td>@x.Department<small>@x.Position</small></td><td>@x.StartDate.ToString("dd/MM/yyyy")</td><td>@x.GrossSalary.ToString("N0")</td><td><span class="status @(x.Status==EmploymentStatuses.Active?"active":"inactive")">@x.Status</span></td><td><a class="link-button" href="@($"tenant/funcionarios/{x.EmploymentId}")">Ficha</a><button class="link-button" @onclick="()=>Select(x)">Editar</button></td></tr>}
 </tbody></table></div></section>
 
 @code{

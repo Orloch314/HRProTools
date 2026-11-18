@@ -1,0 +1,157 @@
+@page "/tenant/identidad-visual"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+@inject TenantBrandingService Branding
+
+<PageTitle>Identidad visual - HR ProTools</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Configuración tenant</span>
+        <h1>Identidad visual</h1>
+        <p>Configure el logo que se mostrará en el encabezado de las pantallas del grupo.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="notice @(hasError ? "notice-error" : "notice-success")" role="status">@message</div>
+}
+
+<section class="panel narrow">
+    <h2>Logo del grupo empresarial</h2>
+    <p class="field-help">Formatos permitidos: PNG, JPEG y WebP. Tamaño máximo: 2 MB.</p>
+
+    @if (!string.IsNullOrWhiteSpace(PreviewUrl))
+    {
+        <div class="tenant-logo-preview"><img src="@PreviewUrl" alt="Vista previa del logo del grupo" /></div>
+    }
+    else
+    {
+        <div class="tenant-logo-empty">No hay un logo configurado.</div>
+    }
+
+    @if (currentLogo is not null && selectedContent is null)
+    {
+        <p class="field-help">Archivo actual: <strong>@currentLogo.FileName</strong> · @FormatSize(currentLogo.Size)</p>
+    }
+    else if (selectedContent is not null)
+    {
+        <p class="field-help">Nuevo archivo: <strong>@selectedFileName</strong> · @FormatSize(selectedContent.Length)</p>
+    }
+
+    <div class="logo-actions">
+        <label class="btn-secondary file-button">
+            Seleccionar imagen
+            <InputFile OnChange="SelectFileAsync" accept="image/png,image/jpeg,image/webp" />
+        </label>
+        <button class="btn-primary" type="button" @onclick="SaveAsync" disabled="@(selectedContent is null || saving)">@(saving ? "Guardando..." : "Guardar cambios")</button>
+        @if (currentLogo is not null)
+        {
+            <button class="btn-danger" type="button" @onclick="DeleteAsync" disabled="@saving">Eliminar logo</button>
+        }
+    </div>
+</section>
+
+@code {
+    private TenantLogoInfo? currentLogo;
+    private byte[]? selectedContent;
+    private string selectedFileName = string.Empty;
+    private string selectedContentType = string.Empty;
+    private string message = string.Empty;
+    private bool hasError;
+    private bool saving;
+
+    private string PreviewUrl => selectedContent is not null
+        ? $"data:{selectedContentType};base64,{Convert.ToBase64String(selectedContent)}"
+        : currentLogo is not null
+            ? $"/tenant/logo?v={currentLogo.UpdatedAtUtc.ToUnixTimeMilliseconds()}"
+            : string.Empty;
+
+    protected override async Task OnInitializedAsync() => currentLogo = await Branding.GetLogoInfoAsync();
+
+    private async Task SelectFileAsync(InputFileChangeEventArgs args)
+    {
+        ResetMessage();
+        try
+        {
+            var file = args.File;
+            if (file.Size > TenantLogoFileValidator.MaximumBytes)
+                throw new InvalidOperationException("El logo no puede superar 2 MB.");
+
+            await using var stream = file.OpenReadStream(TenantLogoFileValidator.MaximumBytes);
+            using var memory = new MemoryStream((int)file.Size);
+            await stream.CopyToAsync(memory);
+            var content = memory.ToArray();
+            var validated = TenantLogoFileValidator.Validate(content);
+            selectedContent = content;
+            selectedContentType = validated.ContentType;
+            selectedFileName = file.Name;
+        }
+        catch (Exception ex)
+        {
+            selectedContent = null;
+            selectedContentType = selectedFileName = string.Empty;
+            hasError = true;
+            message = ex.Message;
+        }
+    }
+
+    private async Task SaveAsync()
+    {
+        if (selectedContent is null)
+            return;
+
+        saving = true;
+        ResetMessage();
+        try
+        {
+            var result = await Branding.SaveLogoAsync(selectedFileName, selectedContent);
+            currentLogo = result.Logo;
+            selectedContent = null;
+            selectedContentType = selectedFileName = string.Empty;
+            message = result.WasScanned
+                ? "Logo guardado y verificado por el antivirus."
+                : "Logo guardado. ClamAV no está configurado y el escaneo fue omitido únicamente en desarrollo.";
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        saving = true;
+        ResetMessage();
+        try
+        {
+            await Branding.DeleteLogoAsync();
+            currentLogo = null;
+            selectedContent = null;
+            selectedContentType = selectedFileName = string.Empty;
+            message = "Logo eliminado.";
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private void ResetMessage()
+    {
+        hasError = false;
+        message = string.Empty;
+    }
+
+    private static string FormatSize(int bytes) => $"{bytes / 1024d:N0} KB";
+}

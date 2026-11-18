@@ -16,4 +16,6 @@ public static class AppPolicies
 {
     public const string GlobalAdministration = "GlobalAdministration";
     public const string TenantAdministration = "TenantAdministration";
+    public const string EmployeeRecords = "EmployeeRecords";
+    public const string SalaryRecords = "SalaryRecords";
 }

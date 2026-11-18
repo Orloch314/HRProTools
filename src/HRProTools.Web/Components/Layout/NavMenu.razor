@@ -6,7 +6,7 @@
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
 <nav>
     <AuthorizeView Roles="@AppRoles.GlobalAdministrator"><Authorized><span class="nav-section">Administracion global</span><NavLink href="admin/grupos">▦ Grupos empresariales</NavLink><NavLink href="admin/smtp">✉ Correo SMTP</NavLink></Authorized></AuthorizeView>
-    <AuthorizeView Roles="@AppRoles.TenantAdministrator"><Authorized><span class="nav-section">Gestion del grupo</span><NavLink href="tenant/funcionarios">♟ Funcionarios</NavLink><NavLink href="tenant/organizacion">▤ Organizacion</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView Roles="@AppRoles.TenantAdministrator"><Authorized><span class="nav-section">Gestion del grupo</span><NavLink href="tenant/funcionarios">♟ Funcionarios</NavLink><NavLink href="tenant/organizacion">▤ Organizacion</NavLink><NavLink href="tenant/identidad-visual">▣ Identidad visual</NavLink></Authorized></AuthorizeView>
     <AuthorizeView><Authorized><span class="nav-section">Cuenta</span><NavLink href="Account/Manage">● @context.User.Identity?.Name</NavLink><form action="Account/Logout" method="post"><AntiforgeryToken/><input type="hidden" name="ReturnUrl" value="@currentUrl"/><button type="submit">↪ Cerrar sesion</button></form></Authorized><NotAuthorized><NavLink href="Account/Login">→ Iniciar sesion</NavLink></NotAuthorized></AuthorizeView>
 </nav>
 </div>

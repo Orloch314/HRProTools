@@ -11,6 +11,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<Employment> Employments => Set<Employment>();
     public DbSet<EmploymentAssignment> EmploymentAssignments => Set<EmploymentAssignment>();
     public DbSet<SalaryHistory> SalaryHistory => Set<SalaryHistory>();
+    public DbSet<TenantBranding> TenantBranding => Set<TenantBranding>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -97,6 +98,18 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.Property(x => x.GrossSalary).HasPrecision(18, 2);
             entity.HasIndex(x => x.EmploymentId).IsUnique().HasFilter("\"ValidTo\" IS NULL");
             entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<TenantBranding>(entity =>
+        {
+            entity.ToTable("tenant_branding", table =>
+                table.HasCheckConstraint("ck_tenant_branding_singleton", "\"Id\" = 1"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Id).ValueGeneratedNever();
+            entity.Property(x => x.LogoData).HasColumnType("bytea");
+            entity.Property(x => x.LogoContentType).HasMaxLength(32);
+            entity.Property(x => x.LogoFileName).HasMaxLength(255);
+            entity.Property(x => x.AntivirusStatus).HasMaxLength(40);
         });
     }
 }
