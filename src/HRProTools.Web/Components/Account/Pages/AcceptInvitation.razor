@@ -22,7 +22,6 @@
         <EditForm Model="Input" OnValidSubmit="AcceptAsync" FormName="accept-invitation" method="post">
             <DataAnnotationsValidator />
             <ValidationSummary class="validation-summary" role="alert" />
-            <label><span>Correo electrónico</span><input value="@Email" disabled /></label>
             <label for="Invitation.Password"><span>Nueva contraseña</span></label>
             <PasswordInput Id="Invitation.Password"
                            @bind-Value="Input.Password"

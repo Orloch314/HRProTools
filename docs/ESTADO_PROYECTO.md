@@ -67,6 +67,8 @@
 - La asignacion de codigos y legajos usa bloqueos transaccionales por schema tenant para impedir duplicados entre operaciones simultaneas.
 - Se corrigio la consulta de nomina que ordenaba una proyeccion no traducible por Entity Framework y producia `InvalidOperationException`.
 - El formulario de alta carga las empresas activas del tenant, selecciona una por defecto y ajusta departamentos/cargos al cambiar de empresa.
+- Los valores asignados por el sistema no se representan como campos de formulario: se retiraron codigo de empresa, codigo de departamento y legajo de las altas, junto con los campos visibles deshabilitados de las pantallas de cuenta.
+- La revision completa de componentes no encontro otros campos visibles `disabled`, `readonly` o de asignacion automatica; permanecen solamente campos ocultos tecnicos requeridos por los POST.
 - Verificacion de datos: `Prova2` y `Prova SA` estan activas en `hr_t_fadda61e560e4314a0ce2ef5bb412fb1`.
 
 ### Pruebas especificas ejecutadas

@@ -10,7 +10,7 @@
 {
 <section class="panel"><h2>Alta de funcionario</h2><EditForm Model="create" OnValidSubmit="CreateAsync" FormName="create-employee"><DataAnnotationsValidator/><ValidationSummary/>
     <div class="form-grid">
-        <label><span>Legajo</span><input value="Asignado automaticamente" disabled /></label><label><span>Cedula</span><InputText @bind-Value="create.DocumentNumber"/></label>
+        <label><span>Cedula</span><InputText @bind-Value="create.DocumentNumber"/></label>
         <label><span>Nombres</span><InputText @bind-Value="create.GivenNames"/></label><label><span>Apellidos</span><InputText @bind-Value="create.FamilyNames"/></label>
         <label><span>Fecha de ingreso</span><InputDate @bind-Value="create.StartDate"/></label><label><span>Empresa</span><InputSelect @bind-Value="create.CompanyId" @bind-Value:after="NormalizeEmployeeCatalogSelections"><option value="">Seleccione</option>@foreach(var x in ActiveCompanies){<option value="@x.Id">@x.LegalName</option>}</InputSelect></label>
         <label><span>Departamento</span><InputSelect @bind-Value="create.DepartmentId"><option value="">Seleccione</option>@foreach(var x in ActiveDepartments.Where(x=>x.CompanyId==create.CompanyId)){<option value="@x.Id">@x.Name</option>}</InputSelect></label>

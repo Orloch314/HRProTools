@@ -12,7 +12,7 @@
 {
     <section class="panel"><h2>@(company.Id is null ? "Nueva empresa" : "Editar empresa")</h2>
         <EditForm Model="company" OnValidSubmit="SaveCompanyAsync" FormName="company"><DataAnnotationsValidator /><ValidationSummary />
-            <div class="form-grid"><label><span>Codigo</span><input value="@(company.Id is null ? "Asignado automaticamente" : company.Code)" disabled /></label><label><span>Razon social</span><InputText @bind-Value="company.LegalName" /></label><label><span>RUC</span><InputText @bind-Value="company.TaxId" /></label><label><span>Email</span><InputText type="email" @bind-Value="company.Email" /></label><label><span>Telefono</span><InputText @bind-Value="company.Phone" /></label><label><span>Direccion</span><InputText @bind-Value="company.Address" /></label></div>
+            <div class="form-grid"><label><span>Razon social</span><InputText @bind-Value="company.LegalName" /></label><label><span>RUC</span><InputText @bind-Value="company.TaxId" /></label><label><span>Email</span><InputText type="email" @bind-Value="company.Email" /></label><label><span>Telefono</span><InputText @bind-Value="company.Phone" /></label><label><span>Direccion</span><InputText @bind-Value="company.Address" /></label></div>
             <button class="btn-primary" type="submit">Guardar</button> @if (company.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCompany">Cancelar</button> }
         </EditForm>
     </section>
@@ -22,7 +22,7 @@ else if (tab == "department")
 {
     <section class="panel"><h2>@(catalog.Id is null ? "Nuevo departamento" : "Editar departamento")</h2>
         <EditForm Model="catalog" OnValidSubmit="SaveDepartmentAsync" FormName="department"><DataAnnotationsValidator /><ValidationSummary />
-            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Codigo</span><input value="@(catalog.Id is null ? "Asignado automaticamente" : catalog.Code)" disabled /></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label></div>
+            <div class="form-grid"><label><span>Empresa</span><InputSelect @bind-Value="catalog.CompanyId"><option value="">Seleccione</option>@foreach(var item in ActiveCompanies){<option value="@item.Id">@item.LegalName</option>}</InputSelect></label><label><span>Nombre</span><InputText @bind-Value="catalog.Name" /></label></div>
             <button class="btn-primary" type="submit">Guardar</button> @if (catalog.Id is not null) { <button class="btn-secondary" type="button" @onclick="ResetCatalog">Cancelar</button> }
         </EditForm>
     </section>
