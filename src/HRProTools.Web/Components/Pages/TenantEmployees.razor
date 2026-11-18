@@ -41,7 +41,7 @@
 
 @code{
     private EmployeeForm create=new(); private List<Company> companies=[]; private List<Department> departments=[]; private List<Position> positions=[]; private List<EmployeeRow> employees=[];
-    private bool showCreate=true,hasError; private string message=string.Empty; private EmployeeRow? selected;
+    private bool showCreate,hasError; private string message=string.Empty; private EmployeeRow? selected;
     private string editGivenNames="",editFamilyNames="",editEmail="",editPhone="",closeReason=""; private Guid changeDepartmentId,changePositionId;
     private DateOnly effectiveDate=DateOnly.FromDateTime(DateTime.Today),salaryDate=DateOnly.FromDateTime(DateTime.Today),closeDate=DateOnly.FromDateTime(DateTime.Today); private decimal newSalary;
     private IEnumerable<Company> ActiveCompanies=>companies.Where(x=>x.IsActive); private IEnumerable<Department> ActiveDepartments=>departments.Where(x=>x.IsActive); private IEnumerable<Position> ActivePositions=>positions.Where(x=>x.IsActive);

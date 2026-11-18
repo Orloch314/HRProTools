@@ -89,6 +89,7 @@
 ### Ficha e historiales del funcionario
 
 - Desde `Funcionarios`, la accion `Ficha` abre `/tenant/funcionarios/{employmentId}`.
+- La nomina abre con el formulario de alta cerrado; el usuario lo despliega expresamente con `Nuevo funcionario` y puede volver a cerrarlo desde el mismo boton.
 - La ficha se organiza en `Datos generales`, `Historial laboral` e `Historial salarial`; los registros aparecen del mas reciente al mas antiguo y la vigencia actual queda destacada.
 - El historial laboral muestra legajo, empresa, departamento, cargo, fechas, estado y motivo, e incluye vinculos laborales anteriores de la misma persona dentro del tenant cuando existen.
 - El historial salarial reutiliza las vigencias existentes y muestra salario bruto, moneda, fechas y estado. Para el MVP la moneda presentada es PYG, coherente con el modelo salarial actual.
