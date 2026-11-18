@@ -18,8 +18,4 @@
     <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.15" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Content Include="..\..\logos\logo.png" Link="wwwroot\images\logo.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
-  </ItemGroup>
-
 </Project>
