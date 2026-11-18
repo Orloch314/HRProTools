@@ -22,7 +22,7 @@
 ## Verificacion realizada
 
 - `dotnet build`: correcta, 0 advertencias y 0 errores.
-- `dotnet test`: 9 pruebas superadas, 0 fallidas, 0 omitidas.
+- `dotnet test`: 10 pruebas superadas, 0 fallidas, 0 omitidas.
 - Prueba de integracion PostgreSQL: crea y migra dos schemas temporales, inserta datos distintos, verifica aislamiento y elimina solamente esos schemas.
 - Prueba de integridad laboral: confirma legajo unico y preservacion del historial organizativo y salarial con una sola vigencia abierta.
 - Prueba funcional en navegador: login global, formulario interactivo y provisioning completo del grupo sintetico `QA27`.
@@ -105,6 +105,8 @@
 - Las cargas pasan por ClamAV mediante el protocolo `INSTREAM`. En Development puede quedar explicitamente como no escaneado si no hay daemon configurado; en Production la carga falla de forma segura si ClamAV no esta configurado o no esta disponible.
 - Para produccion debe configurarse al menos `Antivirus__ClamAv__Host` (por ejemplo `127.0.0.1`); el puerto predeterminado es `3310`. No se incorporaron servicios externos ni dependencias de almacenamiento.
 - Las pruebas verifican firmas validas e invalidas, limite de tamaño, exigencia de antivirus en Production, persistencia tras recrear el contexto, sustitucion, eliminacion y aislamiento entre dos schemas tenant.
+- Se corrigio la inicializacion concurrente del encabezado y la pagina Blazor: la resolucion del tenant usa ahora un contexto global independiente por operacion, evitando compartir el `DbContext` de Identity durante el renderizado paralelo.
+- Una prueba de regresion ejecuta veinte resoluciones simultaneas del tenant y confirma que todas finalizan sobre contextos independientes.
 
 ## Configuracion local
 
