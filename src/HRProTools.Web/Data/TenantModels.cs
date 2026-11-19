@@ -117,3 +117,115 @@ public sealed class TenantBranding
     public DateTimeOffset? ScannedAtUtc { get; set; }
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
+
+public sealed class WorkSchedule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string Name { get; set; } = string.Empty;
+    public TimeOnly StartTime { get; set; }
+    public TimeOnly EndTime { get; set; }
+    public TimeOnly? BreakStart { get; set; }
+    public TimeOnly? BreakEnd { get; set; }
+    public bool Monday { get; set; } = true;
+    public bool Tuesday { get; set; } = true;
+    public bool Wednesday { get; set; } = true;
+    public bool Thursday { get; set; } = true;
+    public bool Friday { get; set; } = true;
+    public bool Saturday { get; set; }
+    public bool Sunday { get; set; }
+    public bool IsActive { get; set; } = true;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class EmploymentWorkSchedule
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public Guid WorkScheduleId { get; set; }
+    public WorkSchedule WorkSchedule { get; set; } = null!;
+    public DateOnly ValidFrom { get; set; }
+    public DateOnly? ValidTo { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class CompanyHoliday
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Company Company { get; set; } = null!;
+    public DateOnly Date { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class VacationPolicy
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid CompanyId { get; set; }
+    public Company Company { get; set; } = null!;
+    public DateOnly EffectiveFrom { get; set; }
+    public decimal AdditionalDaysYears1To5 { get; set; }
+    public decimal AdditionalDaysYears6To10 { get; set; }
+    public decimal AdditionalDaysOver10 { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public static class VacationPeriodOrigins
+{
+    public const string Generated = "GENERATED";
+    public const string Imported = "IMPORTED";
+}
+
+public sealed class VacationPeriod
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public DateOnly ReferenceStart { get; set; }
+    public DateOnly ReferenceEnd { get; set; }
+    public DateOnly AccruedOn { get; set; }
+    public DateOnly UseBy { get; set; }
+    public decimal LegalDays { get; set; }
+    public decimal AdditionalDays { get; set; }
+    public Guid? VacationPolicyId { get; set; }
+    public VacationPolicy? VacationPolicy { get; set; }
+    public string Origin { get; set; } = VacationPeriodOrigins.Generated;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public static class VacationMovementTypes
+{
+    public const string Credit = "CREDIT";
+    public const string Reserve = "RESERVE";
+    public const string Release = "RELEASE";
+    public const string Consume = "CONSUME";
+    public const string Reversal = "REVERSAL";
+    public const string Adjustment = "ADJUSTMENT";
+}
+
+public sealed class VacationMovement
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VacationPeriodId { get; set; }
+    public VacationPeriod VacationPeriod { get; set; } = null!;
+    public string Type { get; set; } = string.Empty;
+    public decimal LegalDays { get; set; }
+    public decimal AdditionalDays { get; set; }
+    public string OperationKey { get; set; } = string.Empty;
+    public Guid? SourceMovementId { get; set; }
+    public string Note { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class TenantImportBatch
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string FileName { get; set; } = string.Empty;
+    public string Sha256 { get; set; } = string.Empty;
+    public string AntivirusStatus { get; set; } = string.Empty;
+    public string Status { get; set; } = string.Empty;
+    public int EmployeeCount { get; set; }
+    public int VacationPeriodCount { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}

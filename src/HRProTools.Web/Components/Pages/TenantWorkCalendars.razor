@@ -1,0 +1,23 @@
+@page "/tenant/jornadas"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+@inject WorkCalendarService Work
+@inject TenantDataService Data
+
+<PageTitle>Jornadas y feriados - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administración tenant</span><h1>Jornadas y feriados</h1><p>Configure jornadas habituales y feriados empresariales sin alterar las reglas legales de vacaciones.</p></div></div>
+@if(!string.IsNullOrWhiteSpace(message)){<div class="notice @(error?"notice-error":"notice-success")">@message</div>}
+<section class="panel"><h2>Nueva jornada laboral</h2><EditForm Model="form" OnValidSubmit="SaveScheduleAsync" FormName="schedule"><DataAnnotationsValidator/><ValidationSummary/>
+<div class="form-grid"><label><span>Nombre</span><InputText @bind-Value="form.Name"/></label><label><span>Inicio</span><InputDate Type="InputDateType.Time" @bind-Value="form.StartTime"/></label><label><span>Finalización</span><InputDate Type="InputDateType.Time" @bind-Value="form.EndTime"/></label><label><span>Inicio del descanso</span><InputDate Type="InputDateType.Time" @bind-Value="form.BreakStart"/></label><label><span>Fin del descanso</span><InputDate Type="InputDateType.Time" @bind-Value="form.BreakEnd"/></label></div>
+<div class="weekday-grid"><label><InputCheckbox @bind-Value="form.Monday"/> Lunes</label><label><InputCheckbox @bind-Value="form.Tuesday"/> Martes</label><label><InputCheckbox @bind-Value="form.Wednesday"/> Miércoles</label><label><InputCheckbox @bind-Value="form.Thursday"/> Jueves</label><label><InputCheckbox @bind-Value="form.Friday"/> Viernes</label><label><InputCheckbox @bind-Value="form.Saturday"/> Sábado</label><label><InputCheckbox @bind-Value="form.Sunday"/> Domingo</label></div><button class="btn-primary">Guardar jornada</button></EditForm></section>
+<section class="panel"><div class="panel-title"><h2>Jornadas</h2><span>@schedules.Count</span></div><div class="table-wrap"><table><thead><tr><th>Nombre</th><th>Días</th><th>Horario</th><th>Descanso</th></tr></thead><tbody>@foreach(var x in schedules){<tr><td>@x.Name</td><td>@Days(x)</td><td>@x.StartTime.ToString("HH:mm")–@x.EndTime.ToString("HH:mm")</td><td>@(x.BreakStart is null?"-":$"{x.BreakStart:HH:mm}–{x.BreakEnd:HH:mm}")</td></tr>}</tbody></table></div></section>
+<section class="panel"><h2>Nuevo feriado</h2><div class="form-grid"><label><span>Empresa</span><select @bind="holidayCompanyId">@foreach(var x in companies.Where(x=>x.IsActive)){<option value="@x.Id">@x.LegalName</option>}</select></label><label><span>Fecha</span><InputDate @bind-Value="holidayDate"/></label><label><span>Nombre</span><input @bind="holidayName"/></label></div><button class="btn-primary" @onclick="SaveHolidayAsync">Guardar feriado</button></section>
+<section class="panel"><div class="panel-title"><h2>Feriados empresariales</h2><span>@holidays.Count</span></div><div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Empresa</th><th>Nombre</th></tr></thead><tbody>@foreach(var x in holidays){<tr><td>@x.Date.ToString("dd/MM/yyyy")</td><td>@x.Company.LegalName</td><td>@x.Name</td></tr>}</tbody></table></div></section>
+@code{
+ private WorkScheduleForm form=new(); private List<WorkSchedule>schedules=[];private List<CompanyHoliday>holidays=[];private List<Company>companies=[];private string message="",holidayName="";private bool error;private Guid holidayCompanyId;private DateOnly holidayDate=DateOnly.FromDateTime(DateTime.Today);
+ protected override async Task OnInitializedAsync(){companies=await Data.GetCompaniesAsync(false);holidayCompanyId=companies.FirstOrDefault()?.Id??Guid.Empty;await LoadAsync();}
+ private async Task LoadAsync(){schedules=await Work.GetSchedulesAsync();holidays=await Work.GetHolidaysAsync();}
+ private async Task SaveScheduleAsync(){await RunAsync(()=>Work.SaveScheduleAsync(form),"Jornada guardada.");form=new();}
+ private async Task SaveHolidayAsync(){await RunAsync(()=>Work.SaveHolidayAsync(holidayCompanyId,holidayDate,holidayName),"Feriado guardado.");holidayName="";}
+ private async Task RunAsync(Func<Task> action,string ok){try{await action();message=ok;error=false;await LoadAsync();}catch(Exception ex){message=ex.Message;error=true;}}
+ private static string Days(WorkSchedule x)=>string.Join(", ",new[]{x.Monday?"Lu":null,x.Tuesday?"Ma":null,x.Wednesday?"Mi":null,x.Thursday?"Ju":null,x.Friday?"Vi":null,x.Saturday?"Sá":null,x.Sunday?"Do":null}.Where(x=>x is not null));
+}

@@ -12,6 +12,13 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<EmploymentAssignment> EmploymentAssignments => Set<EmploymentAssignment>();
     public DbSet<SalaryHistory> SalaryHistory => Set<SalaryHistory>();
     public DbSet<TenantBranding> TenantBranding => Set<TenantBranding>();
+    public DbSet<WorkSchedule> WorkSchedules => Set<WorkSchedule>();
+    public DbSet<EmploymentWorkSchedule> EmploymentWorkSchedules => Set<EmploymentWorkSchedule>();
+    public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
+    public DbSet<VacationPolicy> VacationPolicies => Set<VacationPolicy>();
+    public DbSet<VacationPeriod> VacationPeriods => Set<VacationPeriod>();
+    public DbSet<VacationMovement> VacationMovements => Set<VacationMovement>();
+    public DbSet<TenantImportBatch> ImportBatches => Set<TenantImportBatch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -110,6 +117,89 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.Property(x => x.LogoContentType).HasMaxLength(32);
             entity.Property(x => x.LogoFileName).HasMaxLength(255);
             entity.Property(x => x.AntivirusStatus).HasMaxLength(40);
+        });
+
+        builder.Entity<WorkSchedule>(entity =>
+        {
+            entity.ToTable("work_schedule", table =>
+                table.HasCheckConstraint("ck_work_schedule_time", "\"EndTime\" > \"StartTime\" AND (\"BreakStart\" IS NULL OR (\"BreakEnd\" > \"BreakStart\" AND \"BreakStart\" >= \"StartTime\" AND \"BreakEnd\" <= \"EndTime\"))"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.HasIndex(x => x.Name).IsUnique();
+        });
+
+        builder.Entity<EmploymentWorkSchedule>(entity =>
+        {
+            entity.ToTable("employment_work_schedule", table =>
+                table.HasCheckConstraint("ck_employment_work_schedule_dates", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\""));
+            entity.HasKey(x => x.Id);
+            entity.HasIndex(x => x.EmploymentId).IsUnique().HasFilter("\"ValidTo\" IS NULL");
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.WorkSchedule).WithMany().HasForeignKey(x => x.WorkScheduleId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<CompanyHoliday>(entity =>
+        {
+            entity.ToTable("company_holiday");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(160);
+            entity.HasIndex(x => new { x.CompanyId, x.Date }).IsUnique();
+            entity.HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationPolicy>(entity =>
+        {
+            entity.ToTable("vacation_policy", table =>
+            {
+                table.HasCheckConstraint("ck_vacation_policy_days", "\"AdditionalDaysYears1To5\" >= 0 AND \"AdditionalDaysYears6To10\" >= 0 AND \"AdditionalDaysOver10\" >= 0");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.AdditionalDaysYears1To5).HasPrecision(6, 2);
+            entity.Property(x => x.AdditionalDaysYears6To10).HasPrecision(6, 2);
+            entity.Property(x => x.AdditionalDaysOver10).HasPrecision(6, 2);
+            entity.HasIndex(x => new { x.CompanyId, x.EffectiveFrom }).IsUnique();
+            entity.HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationPeriod>(entity =>
+        {
+            entity.ToTable("vacation_period", table =>
+            {
+                table.HasCheckConstraint("ck_vacation_period_dates", "\"ReferenceEnd\" >= \"ReferenceStart\" AND \"AccruedOn\" > \"ReferenceEnd\" AND \"UseBy\" >= \"AccruedOn\"");
+                table.HasCheckConstraint("ck_vacation_period_days", "\"LegalDays\" >= 0 AND \"AdditionalDays\" >= 0");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LegalDays).HasPrecision(6, 2);
+            entity.Property(x => x.AdditionalDays).HasPrecision(6, 2);
+            entity.Property(x => x.Origin).HasMaxLength(16);
+            entity.HasIndex(x => new { x.EmploymentId, x.ReferenceStart, x.ReferenceEnd }).IsUnique();
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.VacationPolicy).WithMany().HasForeignKey(x => x.VacationPolicyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationMovement>(entity =>
+        {
+            entity.ToTable("vacation_movement", table =>
+                table.HasCheckConstraint("ck_vacation_movement_amount", "\"LegalDays\" <> 0 OR \"AdditionalDays\" <> 0"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Type).HasMaxLength(16);
+            entity.Property(x => x.LegalDays).HasPrecision(6, 2);
+            entity.Property(x => x.AdditionalDays).HasPrecision(6, 2);
+            entity.Property(x => x.OperationKey).HasMaxLength(120);
+            entity.Property(x => x.Note).HasMaxLength(300);
+            entity.HasIndex(x => new { x.OperationKey, x.VacationPeriodId, x.Type }).IsUnique();
+            entity.HasOne(x => x.VacationPeriod).WithMany().HasForeignKey(x => x.VacationPeriodId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<TenantImportBatch>(entity =>
+        {
+            entity.ToTable("tenant_import_batch");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.FileName).HasMaxLength(255);
+            entity.Property(x => x.Sha256).HasMaxLength(64);
+            entity.Property(x => x.AntivirusStatus).HasMaxLength(40);
+            entity.Property(x => x.Status).HasMaxLength(24);
+            entity.HasIndex(x => x.Sha256);
         });
     }
 }

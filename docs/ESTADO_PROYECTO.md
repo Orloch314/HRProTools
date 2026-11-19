@@ -1,8 +1,73 @@
 # Estado del proyecto HR ProTools
 
-**Fecha:** 18/11/2026
-**Fase actual:** Fase 2/5 - primera aplicacion funcional
-**Estado:** Completada, corregida despues de la prueba manual y verificada; Fase 3 no iniciada.
+**Fecha:** 19/11/2026
+**Fase actual:** Fase 3/5 - usuarios, vacaciones e importacion Excel
+**Estado:** Implementada y verificada; Fase 4 no iniciada.
+
+## Implementado en Fase 3
+
+### Usuarios y autoservicio
+
+- `ApplicationUser` se vincula con `PersonId` y `ActiveEmploymentId` sin mezclar persona, legajo y cuenta Identity. El indice por tenant/persona impide cuentas duplicadas para una misma persona.
+- En `Funcionarios` la columna `Acceso` muestra `Sin usuario`, `Invitacion pendiente`, `Activo` o `Inactivo`.
+- La ficha incluye `Acceso al sistema`: enviar o reenviar invitacion, enlace manual cuando SMTP no esta disponible, desactivar, reactivar, asociar una cuenta existente del mismo tenant y asignar roles multiples.
+- El reenvio cambia el security stamp e invalida el enlace anterior. Los errores SMTP conservan tanto el funcionario como la cuenta preparada.
+- El alta manual ofrece `Enviar invitacion de acceso`, desmarcado por defecto. La importacion nunca envia invitaciones.
+- El rol `Employee` dispone de `/empleado`, donde solo consulta sus datos, empresa, departamento, cargo, legajo y saldo propio; el cambio de contraseña reutiliza `/Account/Manage/ChangePassword`.
+- Las operaciones administrativas de acceso vuelven a comprobar `TenantAdministration` dentro del servicio, ademas de la proteccion de la pagina.
+
+### Jornadas y feriados
+
+- `/tenant/jornadas` permite crear jornadas con dias de lunes a domingo, hora inicial/final y descanso opcional, y registrar feriados por empresa.
+- Cada alta recibe una jornada. Los vinculos existentes sin jornada reciben `Jornada estandar` al iniciar con migraciones habilitadas.
+- Los cambios de jornada crean una nueva vigencia y cierran la anterior; no se sobrescribe el historial.
+- Jornadas, feriados y reglas legales de vacaciones permanecen conceptualmente separados. No se implementaron marcaciones, horas extras ni asistencia.
+
+### Politicas, periodos y saldos de vacaciones
+
+- `/tenant/vacaciones/politicas` crea versiones por empresa y fecha de vigencia. Solo se editan dias adicionales; los minimos legales 12/18/30 no son editables.
+- La causacion usa la fecha de ingreso y aniversarios, no el ano calendario. Una politica nueva solo afecta periodos causados desde su vigencia.
+- La primera ejecucion para un funcionario antiguo genera solamente el ultimo periodo causado, evitando inventar saldos historicos desconocidos. Los periodos anteriores se incorporan por Excel.
+- La generacion es idempotente y se ejecuta al iniciar y cada 24 horas con fechas civiles de `America/Asuncion`; tambien existe una accion manual controlada.
+- La ficha del funcionario incluye `Vacaciones`: antiguedad, proxima causacion, legales/adicionales, periodos, limite de seis meses, reservados, consumidos, disponibles y pendientes.
+- Un periodo es pendiente solamente despues de su limite de seis meses y mientras conserve dias legales sin consumir; las reservas futuras no ocultan esa condicion.
+- El ledger inmutable admite `CREDIT`, `RESERVE`, `RELEASE`, `CONSUME`, `REVERSAL` y `ADJUSTMENT`. Las correcciones agregan movimientos.
+- El servicio FIFO reserva desde el periodo mas antiguo, convierte reservas en consumo, libera y revierte en el periodo original. Usa transacciones serializables, bloqueo del ledger y claves idempotentes para impedir duplicados y saldos negativos.
+
+### Importacion Excel
+
+- `/tenant/importacion` descarga una plantilla `.xlsx`, carga hasta 10 MB, escanea con ClamAV, valida las dos hojas y muestra errores por fila antes de confirmar.
+- `Funcionarios` conserva legajo importado y exige empresa, departamento, cargo y jornada existentes. Reutiliza la persona por cedula cuando corresponde y no actualiza funcionarios existentes.
+- `Vacaciones` acepta multiples periodos por legajo, conserva fechas y dias originales y registra usos previos mediante movimientos de consumo de importacion.
+- Si existe un error no se persiste ninguna fila. La confirmacion usa una transaccion unica y guarda nombre, SHA-256, estado antivirus y resultado del lote.
+- Se incorporo ClosedXML 0.105.0; no se agregaron servicios externos de almacenamiento.
+
+### Regla legal y limitaciones
+
+- Ley 213/93, arts. 218-226: derecho despues de cada ano continuo, tramos 12/18/30, otorgamiento dentro de seis meses y registro de goce. Fuente: https://www.bacn.gov.py/leyes-paraguayas/2608/ley
+- La comunicacion MTESS sobre Resolucion 1290/2024 confirma aniversario, tramos, seis meses, inicio lunes/habil, preaviso y fraccionamiento: https://www.mtess.gov.py/?p=30145
+- La ley publicada usa `dias corridos` y la comunicacion MTESS usa `dias habiles`. En Fase 3 se conserva la cantidad reconocida y se separan jornada/feriados; el computo de fechas de una solicitud se implementara en Fase 4 con la regla funcional definitiva.
+- No se implementaron trabajadores zafrales, liquidacion/indemnizacion, solicitudes, aprobaciones, notificaciones de alerta ni alcances por empresa/departamento.
+
+### Rutas de navegacion Fase 3
+
+- Nomina y acceso: `/tenant/funcionarios` -> `Ficha` -> `Acceso al sistema`.
+- Vacaciones individuales: `/tenant/funcionarios/{employmentId}` -> `Vacaciones`.
+- Autoservicio: `/empleado`.
+- Jornadas y feriados: `/tenant/jornadas`.
+- Politicas: `/tenant/vacaciones/politicas`.
+- Importacion: `/tenant/importacion`.
+
+### Verificacion Fase 3
+
+- `dotnet build --configuration Release`: 0 advertencias, 0 errores.
+- `dotnet test`: 19 pruebas superadas, 0 fallidas, 0 omitidas.
+- Limites legales verificados en 1, 5, 6, 10 y 11 anos.
+- Politica no retroactiva, causacion idempotente y criterio de periodo pendiente verificados sobre PostgreSQL.
+- FIFO, consumo, liberacion, reversion y dos reservas concurrentes sin saldo negativo verificados.
+- Plantilla Excel abierta de nuevo con ClosedXML; importacion valida con dos periodos, consumo historico y rechazo posterior del legajo duplicado verificados.
+- Migraciones global y tenant aplicadas al PostgreSQL local; ambos modelos EF no tienen cambios pendientes.
+- Arranque runtime verificado en puerto temporal y `/health` respondio `Healthy` con HTTP 200.
 
 ## Implementado en Fase 2
 
@@ -124,8 +189,8 @@
 2. Repetir manualmente el envio/recepcion y aportar los encabezados completos si el correo vuelve a SPAM.
 3. Configurar `Application:PublicBaseUrl` con el dominio HTTPS real antes de enviar invitaciones desde un ambiente publicado.
 4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
-5. Antes de Fase 3 debe aprobarse la especificacion exacta del calculo legal paraguayo y el formato de importacion Excel.
+5. Antes de Fase 4 debe aprobarse la regla definitiva para convertir cantidades de vacaciones en fechas de solicitud ante la diferencia `dias corridos`/`dias habiles` documentada.
 
 ## Proxima actividad autorizada
 
-Ninguna implementacion de Fase 3 fue iniciada. El siguiente trabajo requiere autorizacion explicita y las definiciones legales indicadas arriba.
+Ninguna implementacion de Fase 4 fue iniciada. El siguiente trabajo requiere autorizacion explicita.

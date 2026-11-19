@@ -1,0 +1,6 @@
+@page "/empleado"
+@attribute [Authorize(Policy = AppPolicies.EmployeeSelfService)]
+@inject EmployeeAccessService Access
+<PageTitle>Mis datos - HR ProTools</PageTitle>
+@if(data is null){<p>Cargando...</p>}else{<div class="page-heading"><div><span class="eyebrow">Autoservicio</span><h1>@data.FullName</h1><p>Información de su vínculo laboral activo.</p></div><a class="btn-secondary" href="Account/Manage/ChangePassword">Cambiar contraseña</a></div><section class="panel"><h2>Mis datos</h2><div class="detail-grid"><div><span>Cédula</span><strong>@data.DocumentNumber</strong></div><div><span>Legajo</span><strong>@data.EmployeeNumber</strong></div><div><span>Empresa</span><strong>@data.Company</strong></div><div><span>Departamento</span><strong>@data.Department</strong></div><div><span>Cargo</span><strong>@data.Position</strong></div><div><span>Vacaciones disponibles</span><strong>@data.AvailableVacationDays.ToString("N2") días</strong></div><div><span>Días reservados</span><strong>@data.ReservedVacationDays.ToString("N2") días</strong></div></div></section>}
+@code{private EmployeeSelfServiceData? data;protected override async Task OnInitializedAsync()=>data=await Access.GetSelfAsync();}

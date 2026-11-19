@@ -59,14 +59,15 @@
 
 ### Funcionalidades
 
-1. Especificar y validar las reglas legales paraguayas antes de codificar sus tramos.
-2. Politicas versionadas por fecha efectiva, incluyendo dias adicionales sobre los mismos tramos de antiguedad.
-3. Generacion de periodos por vinculo laboral sin recalculo retroactivo por cambios de politica.
-4. Libro de movimientos de vacaciones y consulta de saldo por periodo/funcionario.
-5. Importacion Excel de periodos anteriores con detalle individual y validacion previa.
-6. Plantilla de importacion, vista de errores por fila y confirmacion transaccional.
-7. Escaneo ClamAV antes de leer cualquier archivo cargado.
-8. Feriados/calendario minimo necesario para el calculo, sin motor de calendario generico.
+1. Vincular cuentas Identity con persona y vinculo activo, invitar/reactivar/desactivar y asignar roles multiples.
+2. Autoservicio Employee basico con datos propios, vinculo, saldo de vacaciones y cambio de contraseña.
+3. Especificar y validar las reglas legales paraguayas antes de codificar sus tramos.
+4. Jornadas con vigencia y feriados empresariales, separados del computo legal de vacaciones.
+5. Politicas versionadas por fecha efectiva, incluyendo dias adicionales sobre los mismos tramos de antiguedad.
+6. Generacion de periodos por vinculo laboral sin recalculo retroactivo por cambios de politica.
+7. Libro de movimientos de vacaciones, saldos y servicio FIFO transaccional preparado para Fase 4.
+8. Importacion Excel de funcionarios y periodos anteriores con validacion previa, ClamAV y confirmacion transaccional.
+9. Plantilla de dos hojas, vista de errores por fila y conservacion de multiples periodos por legajo.
 
 ### Dependencias
 
@@ -82,6 +83,8 @@
 - El saldo se deriva de movimientos; no se edita directamente.
 - El importador no persiste filas si falla la validacion transaccional del lote.
 - Un archivo no limpio o no escaneado no se procesa.
+- Un funcionario invitado activa su cuenta Employee y solamente consulta sus propios datos.
+- Las cuentas de funcionario no se duplican en reingresos de la misma persona.
 - Se prueba al menos un funcionario nuevo, uno con periodos importados y un cambio de politica no retroactivo.
 
 ## Fase 4 - Permisos, solicitudes, aprobaciones y cancelaciones
@@ -98,11 +101,12 @@
 8. Liberacion de reserva en rechazo/cancelacion y reversion registrada cuando corresponda.
 9. Cancelacion con reglas de estado y registro basico de operaciones.
 10. Configuracion tenant para habilitar o deshabilitar la cancelacion de solicitudes.
+11. Alcances de Recursos Humanos por empresa y autorizadores por departamento.
 
 ### Dependencias
 
 - Saldos y libro de movimientos de Fase 3.
-- Usuarios vinculados a funcionarios y roles `Employee`, `Approver`, `HumanResources`.
+- Usuarios vinculados a funcionarios y roles `Employee`, `Approver`, `HumanResources` entregados en Fase 3.
 - Configuracion de alcances por empresa/departamento.
 - SMTP operativo.
 

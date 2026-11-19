@@ -34,10 +34,13 @@ public sealed class EmployeeForm
     [EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
     [MaxLength(40)] public string Phone { get; set; } = string.Empty;
     [Range(0.01, 999999999999)] public decimal GrossSalary { get; set; }
+    public Guid WorkScheduleId { get; set; }
+    public bool SendAccessInvitation { get; set; }
 }
 
 public sealed record EmployeeRow(
     Guid EmploymentId,
+    Guid PersonId,
     string EmployeeNumber,
     string DocumentNumber,
     string GivenNames,
@@ -53,11 +56,15 @@ public sealed record EmployeeRow(
     string Position,
     DateOnly StartDate,
     string Status,
-    decimal GrossSalary);
+    decimal GrossSalary,
+    Guid WorkScheduleId,
+    string WorkSchedule,
+    string AccessStatus);
 
 public sealed class TenantDataService(
     CurrentTenantService currentTenant,
-    TenantDbContextFactory contextFactory)
+    TenantDbContextFactory contextFactory,
+    IServiceScopeFactory scopeFactory)
 {
     private async Task<(Tenant Tenant, TenantDbContext Db)> OpenAsync(CancellationToken cancellationToken)
     {
@@ -193,9 +200,21 @@ public sealed class TenantDataService(
 
     public async Task<List<EmployeeRow>> GetEmployeesAsync(CancellationToken cancellationToken = default)
     {
-        var (_, db) = await OpenAsync(cancellationToken);
+        var (tenant, db) = await OpenAsync(cancellationToken);
+        List<EmployeeRow> rows;
         await using (db)
-            return await TenantEmployeeQueries.ListAsync(db, cancellationToken);
+            rows = await TenantEmployeeQueries.ListAsync(db, cancellationToken);
+
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var globalDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var accounts = await globalDb.Users.AsNoTracking()
+            .Where(x => x.TenantId == tenant.Id && x.PersonId != null)
+            .Select(x => new { x.PersonId, x.IsActive, x.EmailConfirmed, x.InvitationSentAtUtc })
+            .ToListAsync(cancellationToken);
+        var byPerson = accounts.ToDictionary(x => x.PersonId!.Value);
+        return rows.Select(row => byPerson.TryGetValue(row.PersonId, out var account)
+            ? row with { AccessStatus = account.IsActive ? "Activo" : account.EmailConfirmed ? "Inactivo" : "Invitación pendiente" }
+            : row with { AccessStatus = "Sin usuario" }).ToList();
     }
 
     public async Task<EmployeeHistoryProfile?> GetEmployeeHistoryAsync(
@@ -291,6 +310,17 @@ public sealed class TenantDataService(
                 GrossSalary = form.GrossSalary,
                 ValidFrom = form.StartDate
             });
+            var scheduleId = form.WorkScheduleId;
+            if (scheduleId == Guid.Empty)
+                scheduleId = await EnsureDefaultWorkScheduleAsync(db, cancellationToken);
+            if (!await db.WorkSchedules.AnyAsync(x => x.Id == scheduleId && x.IsActive, cancellationToken))
+                throw new InvalidOperationException("Seleccione una jornada laboral activa.");
+            db.EmploymentWorkSchedules.Add(new EmploymentWorkSchedule
+            {
+                Employment = employment,
+                WorkScheduleId = scheduleId,
+                ValidFrom = form.StartDate
+            });
             await db.SaveChangesAsync(cancellationToken);
             await transaction.CommitAsync(cancellationToken);
             return employeeNumber;
@@ -381,4 +411,21 @@ public sealed class TenantDataService(
 
     private static string NormalizeDocument(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
+
+    private static async Task<Guid> EnsureDefaultWorkScheduleAsync(TenantDbContext db, CancellationToken cancellationToken)
+    {
+        var existing = await db.WorkSchedules.Where(x => x.IsActive).OrderBy(x => x.Name)
+            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
+        if (existing is not null) return existing.Value;
+        var schedule = new WorkSchedule
+        {
+            Name = "Jornada estándar",
+            StartTime = new TimeOnly(8, 0),
+            EndTime = new TimeOnly(17, 0),
+            BreakStart = new TimeOnly(12, 0),
+            BreakEnd = new TimeOnly(13, 0)
+        };
+        db.WorkSchedules.Add(schedule);
+        return schedule.Id;
+    }
 }

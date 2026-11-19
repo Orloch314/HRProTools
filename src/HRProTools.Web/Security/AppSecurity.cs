@@ -18,4 +18,5 @@ public static class AppPolicies
     public const string TenantAdministration = "TenantAdministration";
     public const string EmployeeRecords = "EmployeeRecords";
     public const string SalaryRecords = "SalaryRecords";
+    public const string EmployeeSelfService = "EmployeeSelfService";
 }

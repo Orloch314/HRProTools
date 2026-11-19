@@ -54,8 +54,9 @@ builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
 builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AppPolicies.GlobalAdministration, policy => policy.RequireRole(AppRoles.GlobalAdministrator))
     .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator))
-    .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator))
-    .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator));
+    .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
+    .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
+    .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee));
 
 var keyPath = Path.GetFullPath(builder.Configuration["DataProtection:KeyPath"] ?? "storage/keys", builder.Environment.ContentRootPath);
 Directory.CreateDirectory(keyPath);
@@ -73,6 +74,11 @@ builder.Services.AddScoped<InvitationAcceptanceService>();
 builder.Services.Configure<ClamAvOptions>(builder.Configuration.GetSection("Antivirus:ClamAv"));
 builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>();
 builder.Services.AddScoped<TenantBrandingService>();
+builder.Services.AddScoped<EmployeeAccessService>();
+builder.Services.AddScoped<WorkCalendarService>();
+builder.Services.AddScoped<VacationService>();
+builder.Services.AddScoped<EmployeeExcelImportService>();
+builder.Services.AddHostedService<VacationAccrualHostedService>();
 
 var app = builder.Build();
 
@@ -92,6 +98,7 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
     {
         await using var tenantDb = tenantFactory.Create(schemaName);
         await tenantDb.Database.MigrateAsync();
+        await WorkCalendarService.EnsureDefaultAssignmentsAsync(tenantDb);
     }
 }
 
@@ -118,6 +125,11 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
 app.MapTenantLogo();
+app.MapGet("/tenant/importacion/plantilla", () => Results.File(
+        EmployeeExcelImportService.CreateTemplate(),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Plantilla-importacion-HR-ProTools.xlsx"))
+    .RequireAuthorization(AppPolicies.TenantAdministration);
 
 // Add additional endpoints required by the Identity /Account Razor components.
 app.MapAdditionalIdentityEndpoints();

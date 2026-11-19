@@ -3,6 +3,8 @@
 @inject TenantDataService Data
 @inject AuthenticationStateProvider AuthenticationStateProvider
 @inject IAuthorizationService AuthorizationService
+@inject EmployeeAccessService Access
+@inject VacationService Vacations
 
 <PageTitle>@(profile is null ? "Ficha del funcionario" : $"{profile.General.FullName} - HR ProTools")</PageTitle>
 
@@ -32,6 +34,8 @@ else if (profile is not null)
         {
             <button type="button" class="@(tab == SalaryTab ? "active" : "")" @onclick="() => tab = SalaryTab">Historial salarial</button>
         }
+        <button type="button" class="@(tab == VacationTab ? "active" : "")" @onclick="() => tab = VacationTab">Vacaciones</button>
+        <button type="button" class="@(tab == AccessTab ? "active" : "")" @onclick="() => tab = AccessTab">Acceso al sistema</button>
     </div>
 
     @if (tab == GeneralTab)
@@ -84,12 +88,28 @@ else if (profile is not null)
             </tbody></table></div>
         </section>
     }
+    else if (tab == VacationTab && vacation is not null)
+    {
+        <section class="panel"><h2>Vacaciones</h2><div class="detail-grid"><div><span>Fecha de ingreso</span><strong>@Date(vacation.StartDate)</strong></div><div><span>Antigüedad cumplida</span><strong>@vacation.CompletedYears años</strong></div><div><span>Próxima causación</span><strong>@Date(vacation.NextAccrualDate)</strong></div><div><span>Días legales próximos</span><strong>@vacation.CurrentLegalDays</strong></div><div><span>Días adicionales próximos</span><strong>@vacation.CurrentAdditionalDays</strong></div><div><span>Saldo disponible</span><strong>@vacation.Balance.Available.ToString("N2")</strong></div><div><span>Días reservados</span><strong>@vacation.Balance.Reserved.ToString("N2")</strong></div><div><span>Días consumidos</span><strong>@vacation.Balance.Consumed.ToString("N2")</strong></div><div><span>Períodos pendientes</span><strong>@vacation.Periods.Count(x=>x.IsPending)</strong></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Período</th><th>Adquisición</th><th>Límite</th><th>Legales</th><th>Adicionales</th><th>Reservados</th><th>Consumidos</th><th>Disponibles</th><th>Estado</th></tr></thead><tbody>@if(vacation.Periods.Count==0){<tr><td colspan="9" class="empty">No hay períodos generados o importados.</td></tr>}@foreach(var x in vacation.Periods){<tr><td>@Date(x.ReferenceStart)–@Date(x.ReferenceEnd)<small>@x.Origin</small></td><td>@Date(x.AccruedOn)</td><td>@Date(x.UseBy)</td><td>@x.LegalDays</td><td>@x.AdditionalDays</td><td>@x.Reserved</td><td>@x.Consumed</td><td>@x.Available</td><td><span class="status @(x.IsPending?"error":"active")">@(x.IsPending?"Pendiente":"Vigente")</span></td></tr>}</tbody></table></div></section>
+    }
+    else if (tab == AccessTab)
+    {
+        <section class="panel"><h2>Acceso al sistema</h2>@if(!string.IsNullOrWhiteSpace(accessMessage)){<div class="notice @(accessError?"notice-error":"notice-success")">@accessMessage</div>}<div class="detail-grid"><div><span>Correo</span><strong>@Display(accessInfo?.Email ?? profile.General.Email)</strong></div><div><span>Estado</span><strong>@(accessInfo?.Status??"Sin usuario")</strong></div><div><span>Roles</span><strong>@(accessInfo is null||accessInfo.Roles.Count==0?"-":string.Join(", ",accessInfo.Roles))</strong></div><div><span>Invitación</span><strong>@(accessInfo?.InvitationSentAtUtc?.ToLocalTime().ToString("dd/MM/yyyy HH:mm")??"No enviada")</strong></div></div>
+        <div class="logo-actions"><button class="btn-primary" @onclick="InviteAsync">@(accessInfo?.Status=="Invitación pendiente"?"Reenviar invitación":"Enviar invitación")</button>@if(accessInfo?.Status=="Activo"){<button class="btn-danger" @onclick="()=>SetAccessAsync(false)">Desactivar acceso</button>}else if(accessInfo?.Status=="Inactivo"){<button class="btn-secondary" @onclick="()=>SetAccessAsync(true)">Reactivar acceso</button>}</div>
+        @if(!string.IsNullOrWhiteSpace(manualInvitationLink)){<p class="invitation-box"><strong>Enlace manual:</strong> <a href="@manualInvitationLink">@manualInvitationLink</a></p>}
+        @if(accessInfo?.Status=="Sin usuario"){<h3>Asociar cuenta existente</h3><div class="form-grid"><label><span>Correo de la cuenta</span><input type="email" @bind="associateEmail"/></label></div><button class="btn-secondary" @onclick="AssociateAsync">Asociar</button>}
+        @if(accessInfo is not null && accessInfo.Status!="Sin usuario"){<h3>Roles</h3><div class="weekday-grid"><label><input type="checkbox" checked disabled/> Employee</label><label><InputCheckbox @bind-Value="roleApprover"/> Approver</label><label><InputCheckbox @bind-Value="roleHr"/> HumanResources</label><label><InputCheckbox @bind-Value="roleTenantAdmin"/> TenantAdministrator</label></div><button class="btn-secondary" @onclick="SaveRolesAsync">Guardar roles</button>}
+        </section>
+    }
 }
 
 @code {
     private const string GeneralTab = "general";
     private const string LaborTab = "labor";
     private const string SalaryTab = "salary";
+    private const string VacationTab = "vacation";
+    private const string AccessTab = "access";
 
     [Parameter] public Guid EmploymentId { get; set; }
 
@@ -98,6 +118,7 @@ else if (profile is not null)
     private string tab = GeneralTab;
     private bool canViewSalary;
     private bool notFound;
+    private VacationSummary? vacation; private EmployeeAccessInfo? accessInfo; private string accessMessage="",manualInvitationLink="",associateEmail="";private bool accessError,roleApprover,roleHr,roleTenantAdmin;
 
     protected override async Task OnParametersSetAsync()
     {
@@ -113,6 +134,9 @@ else if (profile is not null)
         salaryHistory = canViewSalary
             ? await Data.GetEmployeeSalaryHistoryAsync(EmploymentId)
             : [];
+        vacation = await Vacations.GetSummaryAsync(EmploymentId);
+        accessInfo = await Access.GetAsync(EmploymentId);
+        SetRoleFlags();
     }
 
     private static string Date(DateOnly value) => value.ToString("dd/MM/yyyy");
@@ -120,4 +144,10 @@ else if (profile is not null)
     private static string Display(string? value) => string.IsNullOrWhiteSpace(value) ? "-" : value;
     private static string EmploymentStatus(string status) =>
         status == EmploymentStatuses.Active ? "Activo" : "Finalizado";
+    private async Task InviteAsync(){try{var result=await Access.InviteAsync(EmploymentId);accessMessage=result.Message;manualInvitationLink=result.EmailSent?"":result.InvitationLink;accessError=!result.EmailSent&&result.Message.Contains("no pudo",StringComparison.OrdinalIgnoreCase);await ReloadAccessAsync();}catch(Exception ex){accessMessage=ex.Message;accessError=true;}}
+    private async Task SetAccessAsync(bool active){try{await Access.SetActiveAsync(EmploymentId,active);accessMessage=active?"Acceso reactivado.":"Acceso desactivado.";accessError=false;await ReloadAccessAsync();}catch(Exception ex){accessMessage=ex.Message;accessError=true;}}
+    private async Task AssociateAsync(){try{await Access.AssociateExistingAsync(EmploymentId,associateEmail);accessMessage="Cuenta asociada.";accessError=false;await ReloadAccessAsync();}catch(Exception ex){accessMessage=ex.Message;accessError=true;}}
+    private async Task SaveRolesAsync(){try{var roles=new List<string>{AppRoles.Employee};if(roleApprover)roles.Add(AppRoles.Approver);if(roleHr)roles.Add(AppRoles.HumanResources);if(roleTenantAdmin)roles.Add(AppRoles.TenantAdministrator);await Access.SetRolesAsync(EmploymentId,roles);accessMessage="Roles actualizados.";accessError=false;await ReloadAccessAsync();}catch(Exception ex){accessMessage=ex.Message;accessError=true;}}
+    private async Task ReloadAccessAsync(){accessInfo=await Access.GetAsync(EmploymentId);SetRoleFlags();}
+    private void SetRoleFlags(){roleApprover=accessInfo?.Roles.Contains(AppRoles.Approver)==true;roleHr=accessInfo?.Roles.Contains(AppRoles.HumanResources)==true;roleTenantAdmin=accessInfo?.Roles.Contains(AppRoles.TenantAdministrator)==true;}
 }

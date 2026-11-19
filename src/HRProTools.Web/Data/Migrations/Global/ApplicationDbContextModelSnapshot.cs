@@ -31,6 +31,9 @@ namespace HRProTools.Web.Data.Migrations.Global
                     b.Property<int>("AccessFailedCount")
                         .HasColumnType("integer");
 
+                    b.Property<Guid?>("ActiveEmploymentId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("ConcurrencyStamp")
                         .IsConcurrencyToken()
                         .HasColumnType("text");
@@ -76,6 +79,9 @@ namespace HRProTools.Web.Data.Migrations.Global
                     b.Property<string>("PasswordHash")
                         .HasColumnType("text");
 
+                    b.Property<Guid?>("PersonId")
+                        .HasColumnType("uuid");
+
                     b.Property<string>("PhoneNumber")
                         .HasColumnType("text");
 
@@ -105,6 +111,13 @@ namespace HRProTools.Web.Data.Migrations.Global
                         .HasDatabaseName("UserNameIndex");
 
                     b.HasIndex("TenantId");
+
+                    b.HasIndex("TenantId", "ActiveEmploymentId")
+                        .HasFilter("\"ActiveEmploymentId\" IS NOT NULL");
+
+                    b.HasIndex("TenantId", "PersonId")
+                        .IsUnique()
+                        .HasFilter("\"PersonId\" IS NOT NULL");
 
                     b.ToTable("AspNetUsers", "auth");
                 });

@@ -12,6 +12,7 @@ public static class TenantEmployeeQueries
             .OrderBy(x => x.EmployeeNumber)
             .Select(x => new EmployeeRow(
                 x.Id,
+                x.PersonId,
                 x.EmployeeNumber,
                 x.Person.DocumentNumber,
                 x.Person.GivenNames,
@@ -42,6 +43,15 @@ public static class TenantEmployeeQueries
                 db.SalaryHistory
                     .Where(s => s.EmploymentId == x.Id && s.ValidTo == null)
                     .Select(s => s.GrossSalary)
-                    .FirstOrDefault()))
+                    .FirstOrDefault(),
+                db.EmploymentWorkSchedules
+                    .Where(s => s.EmploymentId == x.Id && s.ValidTo == null)
+                    .Select(s => s.WorkScheduleId)
+                    .FirstOrDefault(),
+                db.EmploymentWorkSchedules
+                    .Where(s => s.EmploymentId == x.Id && s.ValidTo == null)
+                    .Select(s => s.WorkSchedule.Name)
+                    .FirstOrDefault() ?? "-",
+                "Sin usuario"))
             .ToListAsync(cancellationToken);
 }

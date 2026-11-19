@@ -18,6 +18,8 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
         {
             entity.Property(x => x.DisplayName).HasMaxLength(160);
             entity.HasIndex(x => x.TenantId);
+            entity.HasIndex(x => new { x.TenantId, x.PersonId }).IsUnique().HasFilter("\"PersonId\" IS NOT NULL");
+            entity.HasIndex(x => new { x.TenantId, x.ActiveEmploymentId }).HasFilter("\"ActiveEmploymentId\" IS NOT NULL");
             entity.HasOne<Tenant>().WithMany().HasForeignKey(x => x.TenantId).OnDelete(DeleteBehavior.Restrict);
         });
 
