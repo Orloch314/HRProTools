@@ -19,4 +19,5 @@ public static class AppPolicies
     public const string EmployeeRecords = "EmployeeRecords";
     public const string SalaryRecords = "SalaryRecords";
     public const string EmployeeSelfService = "EmployeeSelfService";
+    public const string VacationWorkflowAccess = "VacationWorkflowAccess";
 }

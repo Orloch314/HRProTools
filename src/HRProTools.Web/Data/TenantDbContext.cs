@@ -21,6 +21,12 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<VacationRequest> VacationRequests => Set<VacationRequest>();
     public DbSet<VacationRequestDay> VacationRequestDays => Set<VacationRequestDay>();
     public DbSet<VacationRequestAllocation> VacationRequestAllocations => Set<VacationRequestAllocation>();
+    public DbSet<VacationWorkflowSettings> VacationWorkflowSettings => Set<VacationWorkflowSettings>();
+    public DbSet<VacationApprovalLevel> VacationApprovalLevels => Set<VacationApprovalLevel>();
+    public DbSet<DepartmentApproverAssignment> DepartmentApproverAssignments => Set<DepartmentApproverAssignment>();
+    public DbSet<HumanResourcesScope> HumanResourcesScopes => Set<HumanResourcesScope>();
+    public DbSet<VacationApprovalStep> VacationApprovalSteps => Set<VacationApprovalStep>();
+    public DbSet<VacationApprovalStepActor> VacationApprovalStepActors => Set<VacationApprovalStepActor>();
     public DbSet<TenantImportBatch> ImportBatches => Set<TenantImportBatch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -234,6 +240,73 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.HasOne(x => x.VacationRequest).WithMany(x => x.Allocations).HasForeignKey(x => x.VacationRequestId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.VacationPeriod).WithMany().HasForeignKey(x => x.VacationPeriodId).OnDelete(DeleteBehavior.Restrict);
             entity.HasOne(x => x.ReservationMovement).WithMany().HasForeignKey(x => x.ReservationMovementId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationWorkflowSettings>(entity =>
+        {
+            entity.ToTable("vacation_workflow_settings", table =>
+                table.HasCheckConstraint("ck_vacation_workflow_settings_singleton", "\"Id\" = 1"));
+            entity.HasKey(x => x.Id);
+        });
+
+        builder.Entity<VacationApprovalLevel>(entity =>
+        {
+            entity.ToTable("vacation_approval_level", table =>
+            {
+                table.HasCheckConstraint("ck_vacation_approval_level_sequence", "\"Sequence\" > 0");
+                table.HasCheckConstraint("ck_vacation_approval_level_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Type).HasMaxLength(24);
+            entity.HasIndex(x => x.Sequence).IsUnique();
+        });
+
+        builder.Entity<DepartmentApproverAssignment>(entity =>
+        {
+            entity.ToTable("department_approver_assignment");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.HasIndex(x => new { x.DepartmentId, x.UserId }).IsUnique();
+            entity.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<HumanResourcesScope>(entity =>
+        {
+            entity.ToTable("human_resources_scope");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.HasIndex(x => new { x.UserId, x.CompanyId }).IsUnique();
+            entity.HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationApprovalStep>(entity =>
+        {
+            entity.ToTable("vacation_approval_step", table =>
+            {
+                table.HasCheckConstraint("ck_vacation_approval_step_sequence", "\"Sequence\" > 0");
+                table.HasCheckConstraint("ck_vacation_approval_step_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+                table.HasCheckConstraint("ck_vacation_approval_step_status", "\"Status\" IN ('WAITING', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Type).HasMaxLength(24);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.DecidedByUserId).HasMaxLength(450);
+            entity.Property(x => x.DecisionComment).HasMaxLength(500);
+            entity.HasIndex(x => new { x.VacationRequestId, x.Sequence }).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.Type });
+            entity.HasOne(x => x.VacationRequest).WithMany(x => x.ApprovalSteps).HasForeignKey(x => x.VacationRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationApprovalStepActor>(entity =>
+        {
+            entity.ToTable("vacation_approval_step_actor");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.HasIndex(x => new { x.VacationApprovalStepId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.VacationApprovalStep).WithMany(x => x.Actors).HasForeignKey(x => x.VacationApprovalStepId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<TenantImportBatch>(entity =>

@@ -2,7 +2,7 @@
 
 **Fecha:** 21/11/2026
 **Fase actual:** Fase 4/5 - solicitudes de vacaciones
-**Estado:** Regla funcional de computo y flujo de vacaciones implementados y verificados; los demas alcances de Fase 4 no fueron iniciados.
+**Estado:** Computo, FIFO y circuito secuencial Jefe -> Recursos Humanos implementados y verificados; no se inicio la Fase 5.
 
 ## Implementado en Fase 4
 
@@ -24,15 +24,29 @@
 - La creacion reserva siempre el saldo del periodo mas antiguo, incluso si esta parcialmente consumido, y continua por los periodos siguientes cuando el primero no alcanza.
 - Se guardan las asignaciones exactas por periodo. Aprobar convierte esas mismas reservas en consumo; rechazar libera las reservas originales; cancelar libera una solicitud pendiente o revierte exactamente los consumos originales de una aprobada.
 - Las transiciones son transaccionales e idempotentes. Repetir una operacion no duplica movimientos y el ledger no permite saldos negativos.
-- `/tenant/vacaciones/solicitudes` permite a `TenantAdministrator` y `HR` consultar las solicitudes pendientes y aprobarlas o rechazarlas. El funcionario consulta y cancela solamente sus propias solicitudes.
+- La presentacion crea la reserva FIFO y una copia inmutable del circuito vigente. La aprobacion de Jefe mantiene la reserva; solamente la aprobacion final de Recursos Humanos la convierte en consumo.
+- Un rechazo de Jefe o de Recursos Humanos libera exactamente las reservas originales. El funcionario consulta sus propias solicitudes y puede cancelarlas solamente cuando la configuracion tenant lo permite.
 - Se reutilizaron `WorkCalendarService`, los historiales de jornada, los feriados y `VacationService`; no se creo un segundo motor de calendario ni de FIFO.
+
+### Circuito de aprobacion corregido
+
+- El circuito predeterminado y obligatorio es `Funcionario -> Jefe / Autorizador -> Recursos Humanos`. Puede contener niveles adicionales de las dos categorias soportadas, siempre manteniendo Jefatura antes de Recursos Humanos.
+- `/tenant/vacaciones/circuito`, disponible exclusivamente para `TenantAdministrator`, configura niveles y orden, autorizadores por departamento, alcance HR de grupo o empresas especificas y cancelacion por el funcionario.
+- Un autorizador puede cubrir varios departamentos y un departamento puede tener varios autorizadores. La decision valida de uno es suficiente; el bloqueo transaccional impide decisiones duplicadas o contradictorias.
+- Los usuarios HR reciben solicitudes solamente dentro de su alcance empresarial. Las asignaciones autorizadas quedan copiadas en cada solicitud, por lo que cambios posteriores de configuracion afectan solamente solicitudes nuevas.
+- `TenantAdministrator` no obtiene permiso operativo por su rol. Puede consultar el estado administrativo del circuito sin recibir datos personales; solamente actua si posee ademas el rol operativo y figura en el alcance copiado de la solicitud.
+- Cada aprobacion o rechazo vuelve a verificar en backend usuario activo, tenant, rol operativo, alcance copiado, nivel actual, estado y prohibicion de autoaprobacion. No es posible saltar niveles mediante identificadores o rutas.
+- `/tenant/vacaciones/solicitudes` muestra pendientes de mi aprobacion, solicitudes procesadas, nivel actual e historial. Los botones operativos aparecen solamente para el usuario habilitado en el paso pendiente.
+- La migracion tenant `CorrectVacationApprovalCircuit` agrega configuracion, alcances, pasos y actores. Inserta el circuito predeterminado sin alterar solicitudes ni movimientos existentes.
+- Antes de preparar la migracion se reviso el PostgreSQL local: ningun schema local contenia aun `vacation_request`. En ambientes donde existan solicitudes pendientes del circuito anterior, se conservan intactas con su reserva y aparecen como pendientes de regularizacion; el administrador debe aplicar expresamente el circuito actual desde la pantalla de configuracion. Solicitudes aprobadas o rechazadas no se modifican.
 
 ### Verificacion de esta entrega
 
 - Casos cubiertos: lunes a viernes, lunes a sabado, jornada que incluye domingo, uno o varios feriados, cambio de jornada con vigencia y consumo en varios periodos empezando por uno parcialmente consumido.
 - Tambien se verifica la instantanea inmutable, aprobacion/rechazo/cancelacion repetidos, ausencia de duplicados, saldos no negativos, jornada obligatoria en alta individual y rechazo del Excel sin jornada.
 - La migracion tenant `Phase4VacationRequests` agrega solicitudes, detalle diario y asignaciones FIFO sin modificar los motores existentes.
-- `dotnet format --verify-no-changes`, compilacion Release con advertencias como errores y las 26 pruebas completas finalizaron correctamente; ambos modelos EF no tienen cambios pendientes.
+- Los casos del circuito verifican reserva al presentar, aprobacion intermedia sin consumo, aprobacion final, rechazo en ambos niveles, administrador sin rol operativo, alcance incorrecto de departamento/empresa, autoaprobacion, reintentos, multiples autorizadores, configuracion inmutable, cancelacion configurable y regularizacion sin alterar la reserva.
+- `dotnet format --verify-no-changes`, compilacion Release con advertencias como errores y las 36 pruebas completas finalizaron correctamente; ambos modelos EF no tienen cambios pendientes.
 - No se desarrollaron otros modulos de Fase 4.
 
 ## Implementado en Fase 3
@@ -86,7 +100,8 @@
 - Vacaciones individuales: `/tenant/funcionarios/{employmentId}` -> `Vacaciones`.
 - Autoservicio: `/empleado`.
 - Solicitud propia de vacaciones: `/empleado/vacaciones`.
-- Aprobacion administrativa de solicitudes: `/tenant/vacaciones/solicitudes`.
+- Bandeja operativa y estado del circuito: `/tenant/vacaciones/solicitudes`.
+- Configuracion tenant del circuito: `/tenant/vacaciones/circuito`.
 - Jornadas y feriados: `/tenant/jornadas`.
 - Politicas: `/tenant/vacaciones/politicas`.
 - Importacion: `/tenant/importacion`.
@@ -223,7 +238,7 @@
 3. Configurar `Application:PublicBaseUrl` con el dominio HTTPS real antes de enviar invitaciones desde un ambiente publicado.
 4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
 5. Obtener validacion juridica documentada sobre la correspondencia entre la regla funcional aprobada y la expresion legal `dias habiles corridos`.
-6. Permanecen fuera de esta entrega de Fase 4 los alcances configurables de aprobador por departamento/empresa, el flujo jefe -> RR. HH., notificaciones y demas solicitudes de permisos.
+6. Permanecen fuera de esta entrega las notificaciones del circuito y las solicitudes de permisos con o sin goce, que no fueron autorizadas para esta correccion.
 
 ## Proxima actividad autorizada
 

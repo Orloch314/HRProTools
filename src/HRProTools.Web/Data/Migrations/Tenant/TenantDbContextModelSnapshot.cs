@@ -153,6 +153,28 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("department", (string)null);
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.DepartmentApproverAssignment", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DepartmentId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("department_approver_assignment", (string)null);
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Employment", b =>
                 {
                     b.Property<Guid>("Id")
@@ -285,6 +307,30 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         {
                             t.HasCheckConstraint("ck_employment_work_schedule_dates", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
                         });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.HumanResourcesScope", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid?>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId");
+
+                    b.HasIndex("UserId", "CompanyId")
+                        .IsUnique();
+
+                    b.ToTable("human_resources_scope", (string)null);
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.Person", b =>
@@ -497,6 +543,127 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.HasIndex("Sha256");
 
                     b.ToTable("tenant_import_batch", (string)null);
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalLevel", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Sequence")
+                        .IsUnique();
+
+                    b.ToTable("vacation_approval_level", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vacation_approval_level_sequence", "\"Sequence\" > 0");
+
+                            t.HasCheckConstraint("ck_vacation_approval_level_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DecisionComment")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.Property<Guid>("VacationRequestId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Status", "Type");
+
+                    b.HasIndex("VacationRequestId", "Sequence")
+                        .IsUnique();
+
+                    b.ToTable("vacation_approval_step", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vacation_approval_step_sequence", "\"Sequence\" > 0");
+
+                            t.HasCheckConstraint("ck_vacation_approval_step_status", "\"Status\" IN ('WAITING', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')");
+
+                            t.HasCheckConstraint("ck_vacation_approval_step_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStepActor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<Guid>("VacationApprovalStepId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VacationApprovalStepId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("vacation_approval_step_actor", (string)null);
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.VacationMovement", b =>
@@ -791,6 +958,28 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("vacation_request_day", (string)null);
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.VacationWorkflowSettings", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<bool>("AllowEmployeeCancellation")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset>("UpdatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("vacation_workflow_settings", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vacation_workflow_settings_singleton", "\"Id\" = 1");
+                        });
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.WorkSchedule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -874,6 +1063,17 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.DepartmentApproverAssignment", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Department", "Department")
+                        .WithMany()
+                        .HasForeignKey("DepartmentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Department");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Employment", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Company", "Company")
@@ -939,6 +1139,16 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("WorkSchedule");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.HumanResourcesScope", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict);
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Position", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Company", "Company")
@@ -959,6 +1169,28 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .IsRequired();
 
                     b.Navigation("Employment");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStep", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.VacationRequest", "VacationRequest")
+                        .WithMany("ApprovalSteps")
+                        .HasForeignKey("VacationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("VacationRequest");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStepActor", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.VacationApprovalStep", "VacationApprovalStep")
+                        .WithMany("Actors")
+                        .HasForeignKey("VacationApprovalStepId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("VacationApprovalStep");
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.VacationMovement", b =>
@@ -1058,9 +1290,16 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("WorkSchedule");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStep", b =>
+                {
+                    b.Navigation("Actors");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.VacationRequest", b =>
                 {
                     b.Navigation("Allocations");
+
+                    b.Navigation("ApprovalSteps");
 
                     b.Navigation("Dates");
                 });

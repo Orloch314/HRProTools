@@ -147,13 +147,25 @@ public sealed class Phase4VacationRequestTests
             await db.SaveChangesAsync();
         }
 
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
         await service.ApproveAsync(requestId, "Aprobada");
         await service.ApproveAsync(requestId, "Aprobada");
+        await using (var intermediate = fixture.CreateTenantDb())
+        {
+            Assert.Equal(VacationRequestStatuses.Pending, (await intermediate.VacationRequests.SingleAsync(x => x.Id == requestId)).Status);
+            Assert.Equal(6, (await VacationLedgerQueries.GetEmploymentBalanceAsync(intermediate, ids.EmploymentId)).Reserved);
+            Assert.Equal(0, await intermediate.VacationMovements.CountAsync(x => x.OperationKey == $"consume:vacation-request:{requestId:N}"));
+        }
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.ApproveAsync(requestId, "Aprobación final");
+        await service.ApproveAsync(requestId, "Aprobación final");
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
         await service.CancelSelfAsync(requestId);
         await service.CancelSelfAsync(requestId);
 
         var rejectedId = Guid.NewGuid();
         await service.CreateSelfAsync(rejectedId, Monday.AddDays(14), Monday.AddDays(21));
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
         await service.RejectAsync(rejectedId, "Rechazo de prueba");
         await service.RejectAsync(rejectedId, "Rechazo de prueba");
 
@@ -171,6 +183,195 @@ public sealed class Phase4VacationRequestTests
         Assert.Equal(8, balance.Consumed);
         Assert.Equal(16, balance.Available);
         Assert.True(balance.Available >= 0);
+    }
+
+    [Fact]
+    public async Task HumanResourcesRejectionAfterManagerApprovalReleasesOriginalReservation()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(requestId, "Conforme");
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.RejectAsync(requestId, "Necesidad operativa");
+
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(VacationRequestStatuses.Rejected, (await db.VacationRequests.SingleAsync(x => x.Id == requestId)).Status);
+        Assert.Equal(0, (await VacationLedgerQueries.GetEmploymentBalanceAsync(db, ids.EmploymentId)).Reserved);
+        Assert.Equal(2, await db.VacationMovements.CountAsync(x => x.OperationKey == $"release:vacation-request:{requestId:N}"));
+    }
+
+    [Fact]
+    public async Task TenantAdministratorWithoutOperationalRoleCannotApprove()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(VacationRequestStatuses.Pending, (await db.VacationRequests.SingleAsync(x => x.Id == requestId)).Status);
+        Assert.Equal(6, (await VacationLedgerQueries.GetEmploymentBalanceAsync(db, ids.EmploymentId)).Reserved);
+    }
+
+    [Fact]
+    public async Task ApproverOutsideDepartmentCannotIntervene()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.OtherDepartmentApproverUser, AppRoles.Approver);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+    }
+
+    [Fact]
+    public async Task HumanResourcesOutsideCompanyScopeCannotIntervene()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(requestId, string.Empty);
+        fixture.AuthenticateAs(fixture.OutOfScopeHumanResourcesUser, AppRoles.HumanResources);
+
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+    }
+
+    [Fact]
+    public async Task EmployeeCannotApproveOwnRequestEvenWithApproverRole()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee, AppRoles.Approver);
+
+        var exception = await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+        Assert.Contains("propia", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public async Task ConfigurationChangesOnlyAffectNewRequests()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var workflow = fixture.Scope.ServiceProvider.GetRequiredService<VacationWorkflowService>();
+        var firstId = Guid.NewGuid();
+        await service.CreateSelfAsync(firstId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        var configuration = await workflow.GetConfigurationAsync();
+        var departmentId = Assert.Single(configuration.Departments).Id;
+        await workflow.SaveDepartmentApproversAsync(departmentId, [fixture.OtherDepartmentApproverUser.Id]);
+        await workflow.SaveLevelsAsync(configuration.Levels.Select(x =>
+            x with { Name = x.Sequence == 1 ? "Jefatura configurada" : x.Name }).ToList());
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+        var secondId = Guid.NewGuid();
+        await service.CreateSelfAsync(secondId, Monday.AddDays(14), Monday.AddDays(21));
+
+        await using var verify = fixture.CreateTenantDb();
+        var firstActors = await verify.VacationApprovalStepActors.Where(x => x.VacationApprovalStep.VacationRequestId == firstId && x.VacationApprovalStep.Type == VacationApprovalLevelTypes.Approver).Select(x => x.UserId).ToListAsync();
+        var secondActors = await verify.VacationApprovalStepActors.Where(x => x.VacationApprovalStep.VacationRequestId == secondId && x.VacationApprovalStep.Type == VacationApprovalLevelTypes.Approver).Select(x => x.UserId).ToListAsync();
+        Assert.Contains(fixture.ApproverUser.Id, firstActors);
+        Assert.DoesNotContain(fixture.OtherDepartmentApproverUser.Id, firstActors);
+        Assert.Contains(fixture.OtherDepartmentApproverUser.Id, secondActors);
+        Assert.Equal("Jefe / Autorizador", await verify.VacationApprovalSteps.Where(x => x.VacationRequestId == firstId && x.Sequence == 1).Select(x => x.Name).SingleAsync());
+        Assert.Equal("Jefatura configurada", await verify.VacationApprovalSteps.Where(x => x.VacationRequestId == secondId && x.Sequence == 1).Select(x => x.Name).SingleAsync());
+    }
+
+    [Fact]
+    public async Task OneOfSeveralApproversIsSufficientWithoutContradictoryDecision()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.SecondApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(requestId, "Aprobación suficiente");
+        await service.ApproveAsync(requestId, "Reintento");
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.RejectAsync(requestId, "Contradicción"));
+
+        await using var db = fixture.CreateTenantDb();
+        Assert.Single(await db.VacationApprovalSteps.Where(x => x.VacationRequestId == requestId && x.Status == VacationApprovalStepStatuses.Approved).ToListAsync());
+        Assert.Equal(6, (await VacationLedgerQueries.GetEmploymentBalanceAsync(db, ids.EmploymentId)).Reserved);
+        Assert.Equal(0, await db.VacationMovements.CountAsync(x => x.OperationKey == $"consume:vacation-request:{requestId:N}"));
+    }
+
+    [Fact]
+    public async Task RequestIsRejectedClearlyWhenDepartmentHasNoConfiguredApprover()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var workflow = fixture.Scope.ServiceProvider.GetRequiredService<VacationWorkflowService>();
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        var departmentId = Assert.Single((await workflow.GetConfigurationAsync()).Departments).Id;
+        await workflow.SaveDepartmentApproversAsync(departmentId, []);
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.CreateSelfAsync(Guid.NewGuid(), Monday, Monday.AddDays(7)));
+        Assert.Contains("configure el circuito", exception.Message, StringComparison.OrdinalIgnoreCase);
+        await using var db = fixture.CreateTenantDb();
+        Assert.Empty(await db.VacationRequests.ToListAsync());
+        Assert.Equal(0, (await VacationLedgerQueries.GetEmploymentBalanceAsync(db, ids.EmploymentId)).Reserved);
+    }
+
+    [Fact]
+    public async Task TenantCancellationSettingIsEnforcedByBackend()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var workflow = fixture.Scope.ServiceProvider.GetRequiredService<VacationWorkflowService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        await workflow.SaveCancellationSettingAsync(false);
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSelfAsync(requestId));
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(6, (await VacationLedgerQueries.GetEmploymentBalanceAsync(db, ids.EmploymentId)).Reserved);
+    }
+
+    [Fact]
+    public async Task LegacyPendingRequestIsRegularizedWithoutChangingReservation()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var requests = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        var workflow = fixture.Scope.ServiceProvider.GetRequiredService<VacationWorkflowService>();
+        var requestId = Guid.NewGuid();
+        await requests.CreateSelfAsync(requestId, Monday, Monday.AddDays(7));
+        await using (var db = fixture.CreateTenantDb())
+        {
+            db.VacationApprovalStepActors.RemoveRange(await db.VacationApprovalStepActors.Where(x => x.VacationApprovalStep.VacationRequestId == requestId).ToListAsync());
+            await db.SaveChangesAsync();
+            db.VacationApprovalSteps.RemoveRange(await db.VacationApprovalSteps.Where(x => x.VacationRequestId == requestId).ToListAsync());
+            await db.SaveChangesAsync();
+        }
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        Assert.Equal(1, await workflow.RegularizePendingRequestsAsync());
+
+        await using var verify = fixture.CreateTenantDb();
+        Assert.Equal(2, await verify.VacationApprovalSteps.CountAsync(x => x.VacationRequestId == requestId));
+        Assert.Equal(6, (await VacationLedgerQueries.GetEmploymentBalanceAsync(verify, ids.EmploymentId)).Reserved);
+        Assert.Equal(2, await verify.VacationMovements.CountAsync(x => x.OperationKey == $"vacation-request:{requestId:N}"));
     }
 
     private static string Connection() => Environment.GetEnvironmentVariable("HRPROTOOLS_TEST_CONNECTION")
@@ -243,6 +444,13 @@ public sealed class Phase4VacationRequestTests
         public required string SchemaName { get; init; }
         public required Tenant Tenant { get; init; }
         public required ApplicationUser User { get; init; }
+        public required ApplicationUser ApproverUser { get; init; }
+        public required ApplicationUser SecondApproverUser { get; init; }
+        public required ApplicationUser OtherDepartmentApproverUser { get; init; }
+        public required ApplicationUser HumanResourcesUser { get; init; }
+        public required ApplicationUser OutOfScopeHumanResourcesUser { get; init; }
+        public required ApplicationUser AdministratorUser { get; init; }
+        public required MutableAuthenticationStateProvider Authentication { get; init; }
         public required ServiceProvider Provider { get; init; }
         public required AsyncServiceScope Scope { get; init; }
 
@@ -266,6 +474,12 @@ public sealed class Phase4VacationRequestTests
                 TenantId = tenant.Id,
                 IsActive = true
             };
+            var approver = TestUser(tenant.Id, "approver", "Jefe Prueba");
+            var secondApprover = TestUser(tenant.Id, "approver2", "Segunda Jefa");
+            var otherDepartmentApprover = TestUser(tenant.Id, "approver-other", "Jefe Otro Departamento");
+            var humanResources = TestUser(tenant.Id, "hr", "RR. HH. Prueba");
+            var outOfScopeHumanResources = TestUser(tenant.Id, "hr-other", "RR. HH. Otra Empresa");
+            var administrator = TestUser(tenant.Id, "admin", "Administrador Tenant");
             var configuration = new ConfigurationBuilder().AddInMemoryCollection(
                 new Dictionary<string, string?> { ["ConnectionStrings:DefaultConnection"] = Connection() }).Build();
             var services = new ServiceCollection();
@@ -273,23 +487,38 @@ public sealed class Phase4VacationRequestTests
             services.AddSingleton<IConfiguration>(configuration);
             services.AddDbContext<ApplicationDbContext>(options => options.UseNpgsql(
                 Connection(), npgsql => npgsql.MigrationsHistoryTable("__ef_migrations_history", "auth")));
-            services.AddSingleton<AuthenticationStateProvider>(new FixedAuthenticationStateProvider(user.Id));
+            var authentication = new MutableAuthenticationStateProvider();
+            authentication.Set(user.Id, AppRoles.Employee);
+            services.AddSingleton<AuthenticationStateProvider>(authentication);
             services.AddAuthorizationBuilder()
                 .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee))
-                .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources));
+                .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator))
+                .AddPolicy(AppPolicies.VacationWorkflowAccess, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources));
             services.AddScoped<CurrentTenantService>();
             services.AddSingleton<TenantDbContextFactory>();
+            services.AddScoped<VacationWorkflowService>();
             services.AddScoped<VacationRequestService>();
             var provider = services.BuildServiceProvider();
             var scope = provider.CreateAsyncScope();
             var global = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
             await global.Database.MigrateAsync();
             global.Tenants.Add(tenant);
-            global.Users.Add(user);
+            await EnsureRolesAsync(global);
+            global.Users.AddRange(user, approver, secondApprover, otherDepartmentApprover, humanResources, outOfScopeHumanResources, administrator);
+            global.UserRoles.AddRange(
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = user.Id, RoleId = await RoleIdAsync(global, AppRoles.Employee) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = approver.Id, RoleId = await RoleIdAsync(global, AppRoles.Approver) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = secondApprover.Id, RoleId = await RoleIdAsync(global, AppRoles.Approver) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = otherDepartmentApprover.Id, RoleId = await RoleIdAsync(global, AppRoles.Approver) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = humanResources.Id, RoleId = await RoleIdAsync(global, AppRoles.HumanResources) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = outOfScopeHumanResources.Id, RoleId = await RoleIdAsync(global, AppRoles.HumanResources) },
+                new Microsoft.AspNetCore.Identity.IdentityUserRole<string> { UserId = administrator.Id, RoleId = await RoleIdAsync(global, AppRoles.TenantAdministrator) });
             await global.SaveChangesAsync();
             await using (var tenantDb = CreateTenantDb(schema)) await tenantDb.Database.MigrateAsync();
-            return new RequestServiceFixture { SchemaName = schema, Tenant = tenant, User = user, Provider = provider, Scope = scope };
+            return new RequestServiceFixture { SchemaName = schema, Tenant = tenant, User = user, ApproverUser = approver, SecondApproverUser = secondApprover, OtherDepartmentApproverUser = otherDepartmentApprover, HumanResourcesUser = humanResources, OutOfScopeHumanResourcesUser = outOfScopeHumanResources, AdministratorUser = administrator, Authentication = authentication, Provider = provider, Scope = scope };
         }
+
+        public void AuthenticateAs(ApplicationUser user, params string[] roles) => Authentication.Set(user.Id, roles);
 
         public TenantDbContext CreateTenantDb() => CreateTenantDb(SchemaName);
 
@@ -297,13 +526,21 @@ public sealed class Phase4VacationRequestTests
         {
             await using var db = CreateTenantDb();
             var company = new Company { Code = "EMP", LegalName = "Empresa", TradeName = "Empresa", TaxId = Guid.NewGuid().ToString("N") };
+            var otherCompany = new Company { Code = "EMP2", LegalName = "Otra empresa", TradeName = "Otra empresa", TaxId = Guid.NewGuid().ToString("N") };
             var person = new Person { DocumentNumber = "99", NormalizedDocumentNumber = "99", GivenNames = "FIFO", FamilyNames = "Prueba" };
             var employment = new Employment { EmployeeNumber = "99", Person = person, Company = company, StartDate = new(2020, 1, 1) };
+            var department = new Department { Company = company, Code = "DEP", Name = "Operaciones" };
+            var position = new Position { Company = company, Code = "POS", Name = "Analista" };
             var schedule = new WorkSchedule { Name = "Lunes a viernes", StartTime = new(8, 0), EndTime = new(17, 0) };
             var first = new VacationPeriod { Employment = employment, ReferenceStart = new(2024, 1, 1), ReferenceEnd = new(2024, 12, 31), AccruedOn = new(2025, 1, 1), UseBy = new(2025, 7, 1), LegalDays = 12 };
             var second = new VacationPeriod { Employment = employment, ReferenceStart = new(2025, 1, 1), ReferenceEnd = new(2025, 12, 31), AccruedOn = new(2026, 1, 1), UseBy = new(2026, 7, 1), LegalDays = 12 };
-            db.AddRange(company, person, employment, schedule, first, second);
+            db.AddRange(company, otherCompany, department, position, person, employment, schedule, first, second);
+            db.EmploymentAssignments.Add(new EmploymentAssignment { Employment = employment, Department = department, Position = position, ValidFrom = employment.StartDate });
             db.EmploymentWorkSchedules.Add(new EmploymentWorkSchedule { Employment = employment, WorkSchedule = schedule, ValidFrom = employment.StartDate });
+            db.DepartmentApproverAssignments.Add(new DepartmentApproverAssignment { Department = department, UserId = ApproverUser.Id });
+            db.DepartmentApproverAssignments.Add(new DepartmentApproverAssignment { Department = department, UserId = SecondApproverUser.Id });
+            db.HumanResourcesScopes.Add(new HumanResourcesScope { UserId = HumanResourcesUser.Id, Company = company });
+            db.HumanResourcesScopes.Add(new HumanResourcesScope { UserId = OutOfScopeHumanResourcesUser.Id, Company = otherCompany });
             db.VacationMovements.AddRange(
                 new VacationMovement { VacationPeriod = first, Type = VacationMovementTypes.Credit, LegalDays = 12, OperationKey = "phase4-credit-1" },
                 new VacationMovement { VacationPeriod = first, Type = VacationMovementTypes.Consume, LegalDays = 8, OperationKey = "phase4-used-1" },
@@ -321,7 +558,7 @@ public sealed class Phase4VacationRequestTests
         public async ValueTask DisposeAsync()
         {
             var global = Scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
-            global.Users.Remove(User);
+            global.Users.RemoveRange(User, ApproverUser, SecondApproverUser, OtherDepartmentApproverUser, HumanResourcesUser, OutOfScopeHumanResourcesUser, AdministratorUser);
             global.Tenants.Remove(Tenant);
             await global.SaveChangesAsync();
             await Scope.DisposeAsync();
@@ -336,17 +573,28 @@ public sealed class Phase4VacationRequestTests
             var cs = new NpgsqlConnectionStringBuilder(Connection()) { SearchPath = schema };
             return new TenantDbContext(new DbContextOptionsBuilder<TenantDbContext>().UseNpgsql(cs.ConnectionString).Options);
         }
+
+        private static ApplicationUser TestUser(Guid tenantId, string prefix, string name)
+        {
+            var email = $"{prefix}-{Guid.NewGuid():N}@test.local";
+            return new ApplicationUser { Id = Guid.NewGuid().ToString("N"), UserName = email, NormalizedUserName = email.ToUpperInvariant(), Email = email, NormalizedEmail = email.ToUpperInvariant(), DisplayName = name, TenantId = tenantId, IsActive = true };
+        }
+
+        private static async Task EnsureRolesAsync(ApplicationDbContext db)
+        {
+            foreach (var role in new[] { AppRoles.Employee, AppRoles.Approver, AppRoles.HumanResources, AppRoles.TenantAdministrator })
+                await db.Database.ExecuteSqlInterpolatedAsync($"INSERT INTO auth.\"AspNetRoles\" (\"Id\", \"Name\", \"NormalizedName\", \"ConcurrencyStamp\") VALUES ({Guid.NewGuid().ToString("N")}, {role}, {role.ToUpperInvariant()}, {Guid.NewGuid().ToString("N")}) ON CONFLICT (\"NormalizedName\") DO NOTHING");
+        }
+
+        private static Task<string> RoleIdAsync(ApplicationDbContext db, string role) =>
+            db.Roles.Where(x => x.NormalizedName == role.ToUpperInvariant()).Select(x => x.Id).SingleAsync();
     }
 
-    private sealed class FixedAuthenticationStateProvider(string userId) : AuthenticationStateProvider
+    private sealed class MutableAuthenticationStateProvider : AuthenticationStateProvider
     {
-        private readonly AuthenticationState state = new(new ClaimsPrincipal(new ClaimsIdentity(
-        [
-            new Claim(ClaimTypes.NameIdentifier, userId),
-            new Claim(ClaimTypes.Role, AppRoles.Employee),
-            new Claim(ClaimTypes.Role, AppRoles.TenantAdministrator)
-        ], "Test")));
-
+        private AuthenticationState state = new(new ClaimsPrincipal(new ClaimsIdentity()));
+        public void Set(string userId, params string[] roles) => state = new(new ClaimsPrincipal(new ClaimsIdentity(
+            new[] { new Claim(ClaimTypes.NameIdentifier, userId) }.Concat(roles.Select(x => new Claim(ClaimTypes.Role, x))), "Test")));
         public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(state);
     }
 

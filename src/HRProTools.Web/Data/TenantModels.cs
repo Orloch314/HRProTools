@@ -226,6 +226,54 @@ public static class VacationRequestStatuses
     public const string Cancelled = "CANCELLED";
 }
 
+public static class VacationApprovalLevelTypes
+{
+    public const string Approver = "APPROVER";
+    public const string HumanResources = "HUMAN_RESOURCES";
+}
+
+public static class VacationApprovalStepStatuses
+{
+    public const string Waiting = "WAITING";
+    public const string Pending = "PENDING";
+    public const string Approved = "APPROVED";
+    public const string Rejected = "REJECTED";
+    public const string Cancelled = "CANCELLED";
+}
+
+public sealed class VacationWorkflowSettings
+{
+    public const int SingletonId = 1;
+    public int Id { get; set; } = SingletonId;
+    public bool AllowEmployeeCancellation { get; set; } = true;
+    public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class VacationApprovalLevel
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public int Sequence { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public bool IsActive { get; set; } = true;
+}
+
+public sealed class DepartmentApproverAssignment
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid DepartmentId { get; set; }
+    public Department Department { get; set; } = null!;
+    public string UserId { get; set; } = string.Empty;
+}
+
+public sealed class HumanResourcesScope
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string UserId { get; set; } = string.Empty;
+    public Guid? CompanyId { get; set; }
+    public Company? Company { get; set; }
+}
+
 public sealed class VacationRequest
 {
     public Guid Id { get; set; } = Guid.NewGuid();
@@ -244,6 +292,32 @@ public sealed class VacationRequest
     public DateTimeOffset? CancelledAtUtc { get; set; }
     public List<VacationRequestDay> Dates { get; set; } = [];
     public List<VacationRequestAllocation> Allocations { get; set; } = [];
+    public List<VacationApprovalStep> ApprovalSteps { get; set; } = [];
+}
+
+public sealed class VacationApprovalStep
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VacationRequestId { get; set; }
+    public VacationRequest VacationRequest { get; set; } = null!;
+    public int Sequence { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Status { get; set; } = VacationApprovalStepStatuses.Waiting;
+    public Guid DepartmentId { get; set; }
+    public Guid CompanyId { get; set; }
+    public string? DecidedByUserId { get; set; }
+    public string DecisionComment { get; set; } = string.Empty;
+    public DateTimeOffset? DecidedAtUtc { get; set; }
+    public List<VacationApprovalStepActor> Actors { get; set; } = [];
+}
+
+public sealed class VacationApprovalStepActor
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VacationApprovalStepId { get; set; }
+    public VacationApprovalStep VacationApprovalStep { get; set; } = null!;
+    public string UserId { get; set; } = string.Empty;
 }
 
 public sealed class VacationRequestDay

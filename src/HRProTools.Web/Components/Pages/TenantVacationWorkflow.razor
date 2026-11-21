@@ -1,0 +1,90 @@
+@page "/tenant/vacaciones/circuito"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+@inject VacationWorkflowService Workflow
+
+<PageTitle>Circuito de vacaciones - HR ProTools</PageTitle>
+
+<div class="page-heading"><div><span class="eyebrow">Administración tenant</span><h1>Circuito de aprobación</h1><p>Configure niveles y alcances. Los cambios se aplican solamente a nuevas solicitudes.</p></div><a class="btn-secondary" href="tenant/vacaciones/solicitudes">Ver solicitudes</a></div>
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
+
+@if (configuration is null) { <p>Cargando configuración…</p> }
+else
+{
+    <section class="panel">
+        <div class="panel-title"><div><h2>Niveles del circuito</h2><p>Debe comenzar con Jefe/Autorizador y finalizar con Recursos Humanos.</p></div><button class="btn-secondary" @onclick="AddLevel">Agregar nivel</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Orden</th><th>Nombre</th><th>Tipo</th><th></th></tr></thead><tbody>
+        @foreach (var level in levels)
+        {
+            <tr><td><InputNumber @bind-Value="level.Sequence" /></td><td><InputText @bind-Value="level.Name" /></td><td><InputSelect @bind-Value="level.Type"><option value="APPROVER">Jefe / Autorizador</option><option value="HUMAN_RESOURCES">Recursos Humanos</option></InputSelect></td><td><button class="link-button" @onclick="() => levels.Remove(level)">Quitar</button></td></tr>
+        }
+        </tbody></table></div>
+        <button class="btn-primary" @onclick="SaveLevelsAsync">Guardar niveles</button>
+    </section>
+
+    <section class="panel">
+        <h2>Autorizadores por departamento</h2>
+        @if (configuration.Departments.Count == 0 || configuration.Approvers.Count == 0) { <div class="notice">Cree departamentos y asigne el rol Approver antes de configurar este alcance.</div> }
+        else
+        {
+            <label><span>Departamento</span><select @bind="selectedDepartmentId" @bind:after="LoadDepartmentSelection">@foreach (var department in configuration.Departments){<option value="@department.Id">@department.Company · @department.Name</option>}</select></label>
+            <div class="weekday-grid">@foreach (var user in configuration.Approvers){<label><input type="checkbox" checked="@selectedApprovers.Contains(user.Id)" @onchange="e => Toggle(selectedApprovers, user.Id, e.Value is true)" /> @user.DisplayName <small>@user.Email</small></label>}</div>
+            <button class="btn-primary" @onclick="SaveDepartmentAsync">Guardar autorizadores</button>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Alcance de Recursos Humanos</h2>
+        @if (configuration.HumanResourcesUsers.Count == 0) { <div class="notice">Asigne el rol HumanResources antes de configurar el alcance.</div> }
+        else
+        {
+            <label><span>Usuario HR</span><select @bind="selectedHrUserId" @bind:after="LoadHrSelection">@foreach (var user in configuration.HumanResourcesUsers){<option value="@user.Id">@user.DisplayName · @user.Email</option>}</select></label>
+            <label><input type="checkbox" @bind="hrEntireGroup" /> Todo el grupo empresarial</label>
+            @if (!hrEntireGroup) { <div class="weekday-grid">@foreach (var company in configuration.Companies){<label><input type="checkbox" checked="@selectedHrCompanies.Contains(company.Id)" @onchange="e => Toggle(selectedHrCompanies, company.Id, e.Value is true)" /> @company.Name</label>}</div> }
+            <button class="btn-primary" @onclick="SaveHrScopeAsync">Guardar alcance HR</button>
+        }
+    </section>
+
+    <section class="panel">
+        <h2>Cancelación por el funcionario</h2>
+        <label><input type="checkbox" @bind="allowCancellation" /> Permitir que el funcionario cancele solicitudes pendientes o aprobadas</label>
+        <button class="btn-primary" @onclick="SaveCancellationAsync">Guardar configuración</button>
+    </section>
+
+    @if (configuration.PendingRequestsWithoutCircuit > 0)
+    {
+        <section class="panel editor-accent"><h2>Solicitudes anteriores</h2><div class="notice notice-error">Hay @configuration.PendingRequestsWithoutCircuit solicitud(es) pendiente(s) creadas con el circuito anterior. Conservan sus reservas y requieren regularización expresa.</div><button class="btn-primary" @onclick="RegularizeAsync">Aplicar el circuito actual a las pendientes</button></section>
+    }
+}
+
+@code {
+    private VacationWorkflowConfiguration? configuration;
+    private readonly List<LevelEdit> levels = [];
+    private readonly HashSet<string> selectedApprovers = new(StringComparer.Ordinal);
+    private readonly HashSet<Guid> selectedHrCompanies = [];
+    private Guid selectedDepartmentId;
+    private string selectedHrUserId = string.Empty;
+    private bool hrEntireGroup, allowCancellation = true, hasError;
+    private string message = string.Empty;
+
+    protected override async Task OnInitializedAsync() => await ReloadAsync();
+    private async Task ReloadAsync()
+    {
+        configuration = await Workflow.GetConfigurationAsync();
+        levels.Clear(); levels.AddRange(configuration.Levels.Select(x => new LevelEdit { Id = x.Id, Sequence = x.Sequence, Name = x.Name, Type = x.Type }));
+        selectedDepartmentId = configuration.Departments.FirstOrDefault()?.Id ?? Guid.Empty;
+        selectedHrUserId = configuration.HumanResourcesUsers.FirstOrDefault()?.Id ?? string.Empty;
+        allowCancellation = configuration.AllowEmployeeCancellation;
+        LoadDepartmentSelection(); LoadHrSelection();
+    }
+    private void AddLevel() => levels.Add(new LevelEdit { Sequence = levels.Count + 1, Name = "Nuevo nivel", Type = VacationApprovalLevelTypes.Approver });
+    private void LoadDepartmentSelection() { selectedApprovers.Clear(); if (configuration is not null) selectedApprovers.UnionWith(configuration.DepartmentApprovers.Where(x => x.DepartmentId == selectedDepartmentId).Select(x => x.UserId)); }
+    private void LoadHrSelection() { selectedHrCompanies.Clear(); if (configuration is null) return; var values = configuration.HumanResourcesScopes.Where(x => x.UserId == selectedHrUserId).ToList(); hrEntireGroup = values.Any(x => x.CompanyId == null); selectedHrCompanies.UnionWith(values.Where(x => x.CompanyId != null).Select(x => x.CompanyId!.Value)); }
+    private static void Toggle<T>(HashSet<T> values, T value, bool selected) { if (selected) values.Add(value); else values.Remove(value); }
+    private async Task SaveLevelsAsync() => await ExecuteAsync(async () => { await Workflow.SaveLevelsAsync(levels.Select(x => new VacationApprovalLevelInput(x.Id, x.Sequence, x.Name, x.Type)).ToList()); await ReloadAsync(); }, "Niveles guardados. Las solicitudes existentes no fueron modificadas.");
+    private async Task SaveDepartmentAsync() => await ExecuteAsync(async () => { await Workflow.SaveDepartmentApproversAsync(selectedDepartmentId, selectedApprovers.ToList()); await ReloadAsync(); }, "Autorizadores del departamento actualizados.");
+    private async Task SaveHrScopeAsync() => await ExecuteAsync(async () => { await Workflow.SaveHumanResourcesScopeAsync(selectedHrUserId, hrEntireGroup, selectedHrCompanies.ToList()); await ReloadAsync(); }, "Alcance de Recursos Humanos actualizado.");
+    private async Task SaveCancellationAsync() => await ExecuteAsync(() => Workflow.SaveCancellationSettingAsync(allowCancellation), "Configuración de cancelación actualizada.");
+    private async Task RegularizeAsync() => await ExecuteAsync(async () => { var count = await Workflow.RegularizePendingRequestsAsync(); await ReloadAsync(); message = $"Se regularizaron {count} solicitud(es) sin alterar sus reservas."; }, string.Empty);
+    private async Task ExecuteAsync(Func<Task> action, string success) { try { await action(); hasError = false; if (!string.IsNullOrWhiteSpace(success)) message = success; } catch (Exception ex) { hasError = true; message = ex.Message; } }
+    private sealed class LevelEdit { public Guid? Id { get; set; } public int Sequence { get; set; } public string Name { get; set; } = string.Empty; public string Type { get; set; } = string.Empty; }
+}

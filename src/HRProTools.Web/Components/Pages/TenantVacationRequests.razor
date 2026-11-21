@@ -1,89 +1,93 @@
 @page "/tenant/vacaciones/solicitudes"
-@attribute [Authorize(Policy = AppPolicies.EmployeeRecords)]
+@attribute [Authorize(Policy = AppPolicies.VacationWorkflowAccess)]
 @inject VacationRequestService Requests
 
 <PageTitle>Solicitudes de vacaciones - HR ProTools</PageTitle>
 
 <div class="page-heading">
-    <div>
-        <span class="eyebrow">Fase 4</span>
-        <h1>Solicitudes de vacaciones</h1>
-        <p>La aprobación consume las reservas originales; el rechazo las libera.</p>
-    </div>
+    <div><span class="eyebrow">Fase 4</span><h1>Circuito de vacaciones</h1><p>Las reservas se consumen solamente con la aprobación final.</p></div>
+    <AuthorizeView Roles="@AppRoles.TenantAdministrator"><Authorized><a class="btn-secondary" href="tenant/vacaciones/circuito">Configurar circuito</a></Authorized></AuthorizeView>
 </div>
 
-@if (!string.IsNullOrWhiteSpace(message))
-{
-    <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div>
-}
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
 
 @if (selected is not null)
 {
     <section class="panel editor-accent">
-        <div class="panel-title"><h2>Resolver solicitud</h2><button class="btn-secondary" @onclick="() => selected = null">Cerrar</button></div>
-        <div class="detail-grid">
-            <div><span>Funcionario</span><strong>@selected.EmployeeNumber · @selected.EmployeeName</strong></div>
-            <div><span>Empresa</span><strong>@selected.Company</strong></div>
-            <div><span>Intervalo</span><strong>@selected.StartDate.ToString("dd/MM/yyyy") – @selected.EndDate.ToString("dd/MM/yyyy")</strong></div>
-            <div><span>Días reservados</span><strong>@selected.RequestedDays</strong></div>
-        </div>
-        <label><span>Comentario de decisión</span><textarea @bind="comment"></textarea></label>
-        <div><button class="btn-primary" @onclick="ApproveAsync">Aprobar</button> <button class="btn-danger" @onclick="RejectAsync">Rechazar</button></div>
+        <div class="panel-title"><h2>Detalle del circuito</h2><button class="btn-secondary" @onclick="() => selected = null">Cerrar</button></div>
+        @if (selected.PersonalDataVisible)
+        {
+            <div class="detail-grid">
+                <div><span>Funcionario</span><strong>@selected.EmployeeNumber · @selected.EmployeeName</strong></div>
+                <div><span>Empresa / departamento</span><strong>@selected.Company · @selected.Department</strong></div>
+                <div><span>Intervalo</span><strong>@selected.StartDate.ToString("dd/MM/yyyy") – @selected.EndDate.ToString("dd/MM/yyyy")</strong></div>
+                <div><span>Días reservados</span><strong>@selected.RequestedDays</strong></div>
+            </div>
+        }
+        else
+        {
+            <div class="notice">La cuenta administrativa puede consultar el estado del circuito, pero no los datos personales de la solicitud.</div>
+        }
+        <h3>Historial</h3>
+        <div class="table-wrap"><table><thead><tr><th>Orden</th><th>Nivel</th><th>Estado</th><th>Usuario</th><th>Comentario</th></tr></thead><tbody>
+        @if (selected.History.Count == 0) { <tr><td colspan="5" class="empty">Circuito anterior pendiente de regularización.</td></tr> }
+        @foreach (var step in selected.History)
+        {
+            <tr><td>@step.Sequence</td><td>@step.Level</td><td>@StepText(step.Status)</td><td>@(string.IsNullOrWhiteSpace(step.DecidedBy) ? "—" : step.DecidedBy)</td><td>@(string.IsNullOrWhiteSpace(step.Comment) ? "—" : step.Comment)</td></tr>
+        }
+        </tbody></table></div>
+        @if (selected.CanAct)
+        {
+            <label><span>Comentario de decisión</span><textarea @bind="comment"></textarea></label>
+            <div><button class="btn-primary" @onclick="ApproveAsync">Aprobar nivel</button> <button class="btn-danger" @onclick="RejectAsync">Rechazar solicitud</button></div>
+        }
     </section>
 }
 
 <section class="panel">
-    <div class="panel-title"><h2>Pendientes</h2><span>@items.Count</span></div>
-    <div class="table-wrap">
-        <table>
-            <thead><tr><th>Funcionario</th><th>Empresa</th><th>Intervalo</th><th>Días</th><th>Registrada</th><th></th></tr></thead>
-            <tbody>
-            @if (items.Count == 0)
-            {
-                <tr><td colspan="6" class="empty">No hay solicitudes pendientes.</td></tr>
-            }
-            @foreach (var item in items)
-            {
-                <tr><td>@item.EmployeeNumber<small>@item.EmployeeName</small></td><td>@item.Company</td><td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td><td>@item.RequestedDays</td><td>@item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td><td><button class="link-button" @onclick="() => Select(item)">Resolver</button></td></tr>
-            }
-            </tbody>
-        </table>
-    </div>
+    <div class="panel-title"><h2>Pendientes de mi aprobación</h2><span>@items.Count(x => x.CanAct)</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Funcionario</th><th>Departamento</th><th>Intervalo</th><th>Días</th><th>Nivel pendiente</th><th></th></tr></thead><tbody>
+    @if (!items.Any(x => x.CanAct)) { <tr><td colspan="6" class="empty">No hay solicitudes pendientes dentro de su alcance.</td></tr> }
+    @foreach (var item in items.Where(x => x.CanAct))
+    {
+        <tr><td>@item.EmployeeNumber<small>@item.EmployeeName</small></td><td>@item.Company<small>@item.Department</small></td><td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td><td>@item.RequestedDays</td><td>@item.PendingLevel</td><td><button class="link-button" @onclick="() => Select(item)">Resolver</button></td></tr>
+    }
+    </tbody></table></div>
+</section>
+
+<section class="panel">
+    <div class="panel-title"><h2>Solicitudes ya procesadas y estado administrativo</h2><span>@items.Count(x => !x.CanAct)</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Solicitud</th><th>Intervalo</th><th>Estado</th><th>Nivel pendiente</th><th></th></tr></thead><tbody>
+    @foreach (var item in items.Where(x => !x.CanAct))
+    {
+        <tr><td>@item.EmployeeName</td><td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td><td>@RequestText(item.Status)</td><td>@(string.IsNullOrWhiteSpace(item.PendingLevel) ? "—" : item.PendingLevel)</td><td><button class="link-button" @onclick="() => Select(item)">Ver circuito</button></td></tr>
+    }
+    </tbody></table></div>
 </section>
 
 @code {
     private List<VacationDecisionItem> items = [];
     private VacationDecisionItem? selected;
-    private string comment = string.Empty;
-    private string message = string.Empty;
+    private string comment = string.Empty, message = string.Empty;
     private bool hasError;
-
     protected override async Task OnInitializedAsync() => await LoadAsync();
-    private async Task LoadAsync() => items = await Requests.GetPendingForDecisionAsync();
+    private async Task LoadAsync() => items = await Requests.GetWorkflowRequestsAsync();
     private void Select(VacationDecisionItem item) { selected = item; comment = string.Empty; }
-
-    private async Task ApproveAsync() => await ResolveAsync(
-        () => Requests.ApproveAsync(selected!.Id, comment),
-        "Solicitud aprobada y reserva convertida en consumo definitivo.");
-
-    private async Task RejectAsync() => await ResolveAsync(
-        () => Requests.RejectAsync(selected!.Id, comment),
-        "Solicitud rechazada y reserva liberada.");
-
+    private async Task ApproveAsync()
+    {
+        var requestId = selected!.Id;
+        await ResolveAsync(() => Requests.ApproveAsync(requestId, comment), string.Empty);
+        if (!hasError)
+            message = items.Single(x => x.Id == requestId).Status == VacationRequestStatuses.Approved
+                ? "Solicitud aprobada definitivamente y reserva convertida en consumo."
+                : "Nivel aprobado. La reserva se mantiene hasta la decisión final.";
+    }
+    private async Task RejectAsync() => await ResolveAsync(() => Requests.RejectAsync(selected!.Id, comment), "Solicitud rechazada y reserva liberada.");
     private async Task ResolveAsync(Func<Task> action, string success)
     {
-        try
-        {
-            await action();
-            selected = null;
-            await LoadAsync();
-            hasError = false;
-            message = success;
-        }
-        catch (Exception ex)
-        {
-            hasError = true;
-            message = ex.Message;
-        }
+        try { await action(); selected = null; await LoadAsync(); hasError = false; if (!string.IsNullOrWhiteSpace(success)) message = success; }
+        catch (Exception ex) { hasError = true; message = ex.Message; }
     }
+    private static string RequestText(string value) => value switch { VacationRequestStatuses.Pending => "Pendiente", VacationRequestStatuses.Approved => "Aprobada", VacationRequestStatuses.Rejected => "Rechazada", VacationRequestStatuses.Cancelled => "Cancelada", _ => value };
+    private static string StepText(string value) => value switch { VacationApprovalStepStatuses.Waiting => "En espera", VacationApprovalStepStatuses.Pending => "Pendiente", VacationApprovalStepStatuses.Approved => "Aprobado", VacationApprovalStepStatuses.Rejected => "Rechazado", VacationApprovalStepStatuses.Cancelled => "Cancelado", _ => value };
 }

@@ -56,7 +56,9 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator))
     .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
     .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
-    .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee));
+    .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee))
+    .AddPolicy(AppPolicies.VacationWorkflowAccess, policy =>
+        policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources));
 
 var keyPath = Path.GetFullPath(builder.Configuration["DataProtection:KeyPath"] ?? "storage/keys", builder.Environment.ContentRootPath);
 Directory.CreateDirectory(keyPath);
@@ -77,6 +79,7 @@ builder.Services.AddScoped<TenantBrandingService>();
 builder.Services.AddScoped<EmployeeAccessService>();
 builder.Services.AddScoped<WorkCalendarService>();
 builder.Services.AddScoped<VacationService>();
+builder.Services.AddScoped<VacationWorkflowService>();
 builder.Services.AddScoped<VacationRequestService>();
 builder.Services.AddScoped<EmployeeExcelImportService>();
 builder.Services.AddHostedService<VacationAccrualHostedService>();

@@ -61,11 +61,11 @@
     <div class="panel-title"><h2>Mis solicitudes</h2><span>@items.Count</span></div>
     <div class="table-wrap">
         <table>
-            <thead><tr><th>Intervalo</th><th>Días</th><th>Estado</th><th>Registrada</th><th></th></tr></thead>
+            <thead><tr><th>Intervalo</th><th>Días</th><th>Estado</th><th>Nivel pendiente</th><th>Registrada</th><th></th></tr></thead>
             <tbody>
             @if (items.Count == 0)
             {
-                <tr><td colspan="5" class="empty">No hay solicitudes registradas.</td></tr>
+                <tr><td colspan="6" class="empty">No hay solicitudes registradas.</td></tr>
             }
             @foreach (var item in items)
             {
@@ -73,8 +73,9 @@
                     <td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td>
                     <td>@item.RequestedDays</td>
                     <td><span class="status @StatusClass(item.Status)">@StatusText(item.Status)</span></td>
+                    <td>@(string.IsNullOrWhiteSpace(item.PendingLevel) ? "—" : item.PendingLevel)</td>
                     <td>@item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
-                    <td>@if (item.Status is VacationRequestStatuses.Pending or VacationRequestStatuses.Approved){<button class="link-button" @onclick="() => CancelAsync(item.Id)">Cancelar</button>}</td>
+                    <td>@if (item.CanCancel){<button class="link-button" @onclick="() => CancelAsync(item.Id)">Cancelar</button>}</td>
                 </tr>
             }
             </tbody>
