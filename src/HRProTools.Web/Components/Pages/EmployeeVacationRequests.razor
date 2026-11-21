@@ -1,0 +1,173 @@
+@page "/empleado/vacaciones"
+@attribute [Authorize(Policy = AppPolicies.EmployeeSelfService)]
+@inject VacationRequestService Requests
+
+<PageTitle>Mis vacaciones - HR ProTools</PageTitle>
+
+<div class="page-heading">
+    <div>
+        <span class="eyebrow">Autoservicio</span>
+        <h1>Solicitar vacaciones</h1>
+        <p>Revise el intervalo y los días exactos antes de confirmar la reserva.</p>
+    </div>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message))
+{
+    <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div>
+}
+
+<section class="panel">
+    <h2>Nueva solicitud</h2>
+    <div class="form-grid">
+        <label><span>Fecha inicial</span><InputDate @bind-Value="startDate" /></label>
+        <label><span>Fecha final</span><InputDate @bind-Value="endDate" /></label>
+    </div>
+    <button class="btn-secondary" @onclick="PreviewAsync">Calcular días</button>
+</section>
+
+@if (preview is not null)
+{
+    <section class="panel editor-accent">
+        <div class="panel-title">
+            <div>
+                <h2>Confirmación del intervalo</h2>
+                <p>@preview.StartDate.ToString("dd/MM/yyyy") – @preview.EndDate.ToString("dd/MM/yyyy")</p>
+            </div>
+            <strong>@preview.DaysToReserve días a reservar</strong>
+        </div>
+        <div class="table-wrap">
+            <table>
+                <thead><tr><th>Fecha</th><th>Jornada vigente</th><th>Día laboral</th><th>Feriado</th><th>Cómputo</th></tr></thead>
+                <tbody>
+                @foreach (var day in preview.Dates)
+                {
+                    <tr>
+                        <td>@day.Date.ToString("dd/MM/yyyy")</td>
+                        <td>@day.WorkScheduleName</td>
+                        <td>@(day.IsScheduledWorkday ? "Sí" : "Descanso semanal")</td>
+                        <td>@(day.IsHoliday ? day.HolidayName : "-")</td>
+                        <td><span class="status @(day.CountsAsVacationDay ? "active" : "inactive")">@(day.CountsAsVacationDay ? "Reserva 1 día" : "No descuenta")</span></td>
+                    </tr>
+                }
+                </tbody>
+            </table>
+        </div>
+        <button class="btn-primary" @onclick="ConfirmAsync" disabled="@saving">@(saving ? "Reservando..." : $"Confirmar reserva de {preview.DaysToReserve} días")</button>
+    </section>
+}
+
+<section class="panel">
+    <div class="panel-title"><h2>Mis solicitudes</h2><span>@items.Count</span></div>
+    <div class="table-wrap">
+        <table>
+            <thead><tr><th>Intervalo</th><th>Días</th><th>Estado</th><th>Registrada</th><th></th></tr></thead>
+            <tbody>
+            @if (items.Count == 0)
+            {
+                <tr><td colspan="5" class="empty">No hay solicitudes registradas.</td></tr>
+            }
+            @foreach (var item in items)
+            {
+                <tr>
+                    <td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td>
+                    <td>@item.RequestedDays</td>
+                    <td><span class="status @StatusClass(item.Status)">@StatusText(item.Status)</span></td>
+                    <td>@item.CreatedAtUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                    <td>@if (item.Status is VacationRequestStatuses.Pending or VacationRequestStatuses.Approved){<button class="link-button" @onclick="() => CancelAsync(item.Id)">Cancelar</button>}</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</section>
+
+@code {
+    private DateOnly startDate = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly endDate = DateOnly.FromDateTime(DateTime.Today);
+    private VacationIntervalCalculation? preview;
+    private Guid previewRequestId;
+    private List<VacationRequestListItem> items = [];
+    private string message = string.Empty;
+    private bool hasError;
+    private bool saving;
+
+    protected override async Task OnInitializedAsync() => items = await Requests.GetSelfRequestsAsync();
+
+    private async Task PreviewAsync()
+    {
+        try
+        {
+            preview = await Requests.PreviewSelfAsync(startDate, endDate);
+            previewRequestId = Guid.NewGuid();
+            hasError = false;
+            message = $"El intervalo reservará exactamente {preview.DaysToReserve} días.";
+        }
+        catch (Exception ex)
+        {
+            preview = null;
+            hasError = true;
+            message = ex.Message;
+        }
+    }
+
+    private async Task ConfirmAsync()
+    {
+        if (preview is null || preview.StartDate != startDate || preview.EndDate != endDate)
+        {
+            hasError = true;
+            message = "Vuelva a calcular el intervalo antes de confirmar.";
+            return;
+        }
+        saving = true;
+        try
+        {
+            await Requests.CreateSelfAsync(previewRequestId, preview.StartDate, preview.EndDate);
+            items = await Requests.GetSelfRequestsAsync();
+            preview = null;
+            hasError = false;
+            message = "Solicitud registrada y saldo reservado según FIFO.";
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            message = ex.Message;
+        }
+        finally
+        {
+            saving = false;
+        }
+    }
+
+    private async Task CancelAsync(Guid requestId)
+    {
+        try
+        {
+            await Requests.CancelSelfAsync(requestId);
+            items = await Requests.GetSelfRequestsAsync();
+            hasError = false;
+            message = "Solicitud cancelada y asignaciones originales revertidas.";
+        }
+        catch (Exception ex)
+        {
+            hasError = true;
+            message = ex.Message;
+        }
+    }
+
+    private static string StatusText(string status) => status switch
+    {
+        VacationRequestStatuses.Pending => "Pendiente",
+        VacationRequestStatuses.Approved => "Aprobada",
+        VacationRequestStatuses.Rejected => "Rechazada",
+        VacationRequestStatuses.Cancelled => "Cancelada",
+        _ => status
+    };
+
+    private static string StatusClass(string status) => status switch
+    {
+        VacationRequestStatuses.Approved => "active",
+        VacationRequestStatuses.Pending => "pending",
+        _ => "inactive"
+    };
+}

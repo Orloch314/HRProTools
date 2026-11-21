@@ -643,6 +643,154 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         });
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DecisionComment")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("EmploymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("RequestedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<int>("RequestedDays")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ReservationKey")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReservationKey")
+                        .IsUnique();
+
+                    b.HasIndex("EmploymentId", "Status");
+
+                    b.ToTable("vacation_request", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vacation_request_dates", "\"EndDate\" >= \"StartDate\"");
+
+                            t.HasCheckConstraint("ck_vacation_request_days", "\"RequestedDays\" > 0");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequestAllocation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("AdditionalDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<decimal>("LegalDays")
+                        .HasPrecision(6, 2)
+                        .HasColumnType("numeric(6,2)");
+
+                    b.Property<Guid>("ReservationMovementId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VacationPeriodId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("VacationRequestId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ReservationMovementId")
+                        .IsUnique();
+
+                    b.HasIndex("VacationPeriodId");
+
+                    b.HasIndex("VacationRequestId");
+
+                    b.ToTable("vacation_request_allocation", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_vacation_request_allocation_days", "\"LegalDays\" >= 0 AND \"AdditionalDays\" >= 0 AND (\"LegalDays\" <> 0 OR \"AdditionalDays\" <> 0)");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequestDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<bool>("CountsAsVacationDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<string>("HolidayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<bool>("IsHoliday")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsScheduledWorkday")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("VacationRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("WorkScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WorkScheduleName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("WorkScheduleId");
+
+                    b.HasIndex("VacationRequestId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("vacation_request_day", (string)null);
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.WorkSchedule", b =>
                 {
                     b.Property<Guid>("Id")
@@ -851,6 +999,70 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .IsRequired();
 
                     b.Navigation("Company");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequest", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Employment", "Employment")
+                        .WithMany()
+                        .HasForeignKey("EmploymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employment");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequestAllocation", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.VacationMovement", "ReservationMovement")
+                        .WithMany()
+                        .HasForeignKey("ReservationMovementId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HRProTools.Web.Data.VacationPeriod", "VacationPeriod")
+                        .WithMany()
+                        .HasForeignKey("VacationPeriodId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HRProTools.Web.Data.VacationRequest", "VacationRequest")
+                        .WithMany("Allocations")
+                        .HasForeignKey("VacationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("ReservationMovement");
+
+                    b.Navigation("VacationPeriod");
+
+                    b.Navigation("VacationRequest");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequestDay", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.VacationRequest", "VacationRequest")
+                        .WithMany("Dates")
+                        .HasForeignKey("VacationRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("HRProTools.Web.Data.WorkSchedule", "WorkSchedule")
+                        .WithMany()
+                        .HasForeignKey("WorkScheduleId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("VacationRequest");
+
+                    b.Navigation("WorkSchedule");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.VacationRequest", b =>
+                {
+                    b.Navigation("Allocations");
+
+                    b.Navigation("Dates");
                 });
 #pragma warning restore 612, 618
         }

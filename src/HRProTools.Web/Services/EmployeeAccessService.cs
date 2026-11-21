@@ -155,9 +155,15 @@ public sealed class EmployeeAccessService(
         if (link.PersonId is null || link.ActiveEmploymentId is null) throw new UnauthorizedAccessException("La cuenta no está vinculada a un funcionario activo.");
         await using var db = tenantFactory.Create(tenant.SchemaName);
         var data = await db.Employments.AsNoTracking().Where(x => x.Id == link.ActiveEmploymentId && x.PersonId == link.PersonId)
-            .Select(x => new { FullName = x.Person.GivenNames + " " + x.Person.FamilyNames, x.Person.DocumentNumber, x.EmployeeNumber, Company = x.Company.LegalName,
+            .Select(x => new
+            {
+                FullName = x.Person.GivenNames + " " + x.Person.FamilyNames,
+                x.Person.DocumentNumber,
+                x.EmployeeNumber,
+                Company = x.Company.LegalName,
                 Department = db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.Department.Name).FirstOrDefault() ?? "-",
-                Position = db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.Position.Name).FirstOrDefault() ?? "-" })
+                Position = db.EmploymentAssignments.Where(a => a.EmploymentId == x.Id && a.ValidTo == null).Select(a => a.Position.Name).FirstOrDefault() ?? "-"
+            })
             .SingleAsync(cancellationToken);
         var balances = await VacationLedgerQueries.GetEmploymentBalanceAsync(db, link.ActiveEmploymentId.Value, cancellationToken);
         return new(data.FullName, data.DocumentNumber, data.EmployeeNumber, data.Company, data.Department, data.Position, balances.Available, balances.Reserved);

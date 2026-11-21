@@ -20,6 +20,22 @@ public sealed class WorkScheduleForm
     public bool Sunday { get; set; }
 }
 
+public sealed record VacationDateCalculation(
+    DateOnly Date,
+    Guid WorkScheduleId,
+    string WorkScheduleName,
+    bool IsScheduledWorkday,
+    bool IsHoliday,
+    string HolidayName,
+    bool CountsAsVacationDay);
+
+public sealed record VacationIntervalCalculation(
+    Guid EmploymentId,
+    DateOnly StartDate,
+    DateOnly EndDate,
+    int DaysToReserve,
+    IReadOnlyList<VacationDateCalculation> Dates);
+
 public sealed class WorkCalendarService(CurrentTenantService currentTenant, TenantDbContextFactory factory)
 {
     public async Task<List<WorkSchedule>> GetSchedulesAsync(CancellationToken cancellationToken = default)
@@ -27,7 +43,6 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
         var db = await OpenAsync(cancellationToken);
         await using (db)
         {
-            await EnsureDefaultAssignmentsAsync(db, cancellationToken);
             return await db.WorkSchedules.AsNoTracking().OrderBy(x => x.Name).ToListAsync(cancellationToken);
         }
     }
@@ -44,10 +59,18 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
         {
             db.WorkSchedules.Add(new WorkSchedule
             {
-                Name = form.Name.Trim(), StartTime = form.StartTime, EndTime = form.EndTime,
-                BreakStart = form.BreakStart, BreakEnd = form.BreakEnd,
-                Monday = form.Monday, Tuesday = form.Tuesday, Wednesday = form.Wednesday,
-                Thursday = form.Thursday, Friday = form.Friday, Saturday = form.Saturday, Sunday = form.Sunday
+                Name = form.Name.Trim(),
+                StartTime = form.StartTime,
+                EndTime = form.EndTime,
+                BreakStart = form.BreakStart,
+                BreakEnd = form.BreakEnd,
+                Monday = form.Monday,
+                Tuesday = form.Tuesday,
+                Wednesday = form.Wednesday,
+                Thursday = form.Thursday,
+                Friday = form.Friday,
+                Saturday = form.Saturday,
+                Sunday = form.Sunday
             });
             await db.SaveChangesAsync(cancellationToken);
         }
@@ -90,19 +113,85 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
         }
     }
 
+    public async Task<VacationIntervalCalculation> CalculateVacationIntervalAsync(
+        Guid employmentId,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken = default)
+    {
+        var db = await OpenAsync(cancellationToken);
+        await using (db)
+            return await CalculateVacationIntervalAsync(db, employmentId, startDate, endDate, cancellationToken);
+    }
+
+    public static async Task<VacationIntervalCalculation> CalculateVacationIntervalAsync(
+        TenantDbContext db,
+        Guid employmentId,
+        DateOnly startDate,
+        DateOnly endDate,
+        CancellationToken cancellationToken = default)
+    {
+        if (endDate < startDate)
+            throw new InvalidOperationException("La fecha final no puede ser anterior a la fecha inicial.");
+
+        var employment = await db.Employments.AsNoTracking()
+            .Where(x => x.Id == employmentId && x.Status == EmploymentStatuses.Active)
+            .Select(x => new { x.Id, x.CompanyId, x.StartDate })
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new InvalidOperationException("El vínculo laboral no está activo.");
+        if (startDate < employment.StartDate)
+            throw new InvalidOperationException("La solicitud no puede comenzar antes del vínculo laboral.");
+
+        var assignments = await db.EmploymentWorkSchedules.AsNoTracking()
+            .Include(x => x.WorkSchedule)
+            .Where(x => x.EmploymentId == employmentId && x.ValidFrom <= endDate &&
+                (x.ValidTo == null || x.ValidTo >= startDate))
+            .OrderBy(x => x.ValidFrom)
+            .ToListAsync(cancellationToken);
+        var holidays = await db.CompanyHolidays.AsNoTracking()
+            .Where(x => x.CompanyId == employment.CompanyId && x.Date >= startDate && x.Date <= endDate)
+            .ToDictionaryAsync(x => x.Date, cancellationToken);
+
+        var dates = new List<VacationDateCalculation>();
+        for (var date = startDate; date <= endDate; date = date.AddDays(1))
+        {
+            var effective = assignments
+                .Where(x => x.ValidFrom <= date && (x.ValidTo == null || x.ValidTo >= date))
+                .ToList();
+            if (effective.Count != 1)
+                throw new InvalidOperationException($"No existe una única jornada vigente para el {date:dd/MM/yyyy}.");
+
+            var schedule = effective[0].WorkSchedule;
+            var scheduledWorkday = IsScheduledWorkday(schedule, date.DayOfWeek);
+            var holiday = holidays.GetValueOrDefault(date);
+            dates.Add(new VacationDateCalculation(
+                date,
+                schedule.Id,
+                schedule.Name,
+                scheduledWorkday,
+                holiday is not null,
+                holiday?.Name ?? string.Empty,
+                scheduledWorkday && holiday is null));
+        }
+
+        var daysToReserve = dates.Count(x => x.CountsAsVacationDay);
+        if (daysToReserve == 0)
+            throw new InvalidOperationException("El intervalo no contiene días laborales computables.");
+        return new VacationIntervalCalculation(employmentId, startDate, endDate, daysToReserve, dates);
+    }
+
     private async Task<TenantDbContext> OpenAsync(CancellationToken ct) => factory.Create((await currentTenant.GetRequiredAsync(ct)).SchemaName);
 
-    public static async Task EnsureDefaultAssignmentsAsync(TenantDbContext db, CancellationToken ct = default)
+    private static bool IsScheduledWorkday(WorkSchedule schedule, DayOfWeek day) => day switch
     {
-        var schedule = await db.WorkSchedules.FirstOrDefaultAsync(x => x.Name == "Jornada estándar", ct);
-        if (schedule is null)
-        {
-            schedule = new WorkSchedule { Name = "Jornada estándar", StartTime = new(8, 0), EndTime = new(17, 0), BreakStart = new(12, 0), BreakEnd = new(13, 0) };
-            db.WorkSchedules.Add(schedule);
-        }
-        var missing = await db.Employments.Where(x => x.Status == EmploymentStatuses.Active && !db.EmploymentWorkSchedules.Any(s => s.EmploymentId == x.Id && s.ValidTo == null)).ToListAsync(ct);
-        foreach (var employment in missing)
-            db.EmploymentWorkSchedules.Add(new EmploymentWorkSchedule { EmploymentId = employment.Id, WorkSchedule = schedule, ValidFrom = employment.StartDate });
-        if (missing.Count > 0 || db.Entry(schedule).State == EntityState.Added) await db.SaveChangesAsync(ct);
-    }
+        DayOfWeek.Monday => schedule.Monday,
+        DayOfWeek.Tuesday => schedule.Tuesday,
+        DayOfWeek.Wednesday => schedule.Wednesday,
+        DayOfWeek.Thursday => schedule.Thursday,
+        DayOfWeek.Friday => schedule.Friday,
+        DayOfWeek.Saturday => schedule.Saturday,
+        DayOfWeek.Sunday => schedule.Sunday,
+        _ => false
+    };
+
 }

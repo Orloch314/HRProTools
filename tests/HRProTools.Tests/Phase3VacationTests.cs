@@ -117,6 +117,18 @@ public sealed class Phase3VacationTests
             using var stream = new MemoryStream(); workbook.SaveAs(stream); bytes = stream.ToArray();
         }
         var importer = fixture.Scope.ServiceProvider.GetRequiredService<EmployeeExcelImportService>();
+        byte[] missingScheduleBytes;
+        using (var workbook = new XLWorkbook(new MemoryStream(bytes)))
+        {
+            workbook.Worksheet("Funcionarios").Cell("L2").Clear();
+            using var stream = new MemoryStream();
+            workbook.SaveAs(stream);
+            missingScheduleBytes = stream.ToArray();
+        }
+        var missingSchedule = await importer.ValidateAsync("import-sin-jornada.xlsx", missingScheduleBytes);
+        Assert.False(missingSchedule.IsValid);
+        Assert.Contains(missingSchedule.Errors, x => x.Message.Contains("jornada", StringComparison.OrdinalIgnoreCase));
+
         var preview = await importer.ValidateAsync("import.xlsx", bytes);
         Assert.True(preview.IsValid, string.Join("; ", preview.Errors.Select(x => x.Message)));
         await importer.ConfirmAsync(preview);

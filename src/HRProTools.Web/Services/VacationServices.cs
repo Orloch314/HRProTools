@@ -102,9 +102,14 @@ public sealed class VacationService(CurrentTenantService currentTenant, TenantDb
                 var additional = policy is null ? 0 : years <= 5 ? policy.AdditionalDaysYears1To5 : years <= 10 ? policy.AdditionalDaysYears6To10 : policy.AdditionalDaysOver10;
                 var period = new VacationPeriod
                 {
-                    EmploymentId = employment.Id, ReferenceStart = anniversary.AddYears(-1), ReferenceEnd = anniversary.AddDays(-1),
-                    AccruedOn = anniversary, UseBy = anniversary.AddMonths(6), LegalDays = ParaguayVacationRules.LegalDays(years),
-                    AdditionalDays = additional, VacationPolicyId = policy?.Id
+                    EmploymentId = employment.Id,
+                    ReferenceStart = anniversary.AddYears(-1),
+                    ReferenceEnd = anniversary.AddDays(-1),
+                    AccruedOn = anniversary,
+                    UseBy = anniversary.AddMonths(6),
+                    LegalDays = ParaguayVacationRules.LegalDays(years),
+                    AdditionalDays = additional,
+                    VacationPolicyId = policy?.Id
                 };
                 if (!await db.VacationPeriods.AnyAsync(x => x.EmploymentId == employment.Id && x.ReferenceStart == period.ReferenceStart && x.ReferenceEnd == period.ReferenceEnd, ct))
                 {
@@ -149,9 +154,23 @@ public sealed class VacationService(CurrentTenantService currentTenant, TenantDb
         await using var db = await OpenAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         await db.Database.ExecuteSqlRawAsync("LOCK TABLE vacation_movement IN SHARE ROW EXCLUSIVE MODE", ct);
+        var result = await ReserveInTransactionAsync(db, employmentId, days, operationKey, ct);
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
+    internal static async Task<IReadOnlyList<VacationMovement>> ReserveInTransactionAsync(
+        TenantDbContext db,
+        Guid employmentId,
+        decimal days,
+        string operationKey,
+        CancellationToken ct)
+    {
+        if (days <= 0 || string.IsNullOrWhiteSpace(operationKey)) throw new InvalidOperationException("La reserva requiere días y una clave de operación válidos.");
         var existing = await db.VacationMovements.Where(x => x.OperationKey == operationKey && x.Type == VacationMovementTypes.Reserve).ToListAsync(ct);
         if (existing.Count > 0) return existing;
-        var periods = await db.VacationPeriods.Where(x => x.EmploymentId == employmentId).OrderBy(x => x.AccruedOn).ToListAsync(ct);
+        var periods = await db.VacationPeriods.Where(x => x.EmploymentId == employmentId)
+            .OrderBy(x => x.AccruedOn).ThenBy(x => x.ReferenceStart).ThenBy(x => x.Id).ToListAsync(ct);
         var movements = await db.VacationMovements.Where(x => periods.Select(p => p.Id).Contains(x.VacationPeriodId)).ToListAsync(ct);
         var remaining = days;
         var result = new List<VacationMovement>();
@@ -171,7 +190,8 @@ public sealed class VacationService(CurrentTenantService currentTenant, TenantDb
             if (remaining <= 0) break;
         }
         if (remaining > 0) throw new InvalidOperationException("El saldo disponible es insuficiente.");
-        await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return result;
+        await db.SaveChangesAsync(ct);
+        return result;
     }
 
     public Task<IReadOnlyList<VacationMovement>> ConsumeReservationAsync(string reservationKey, CancellationToken ct = default) => ResolveReservationAsync(reservationKey, VacationMovementTypes.Consume, "consume:", ct);
@@ -182,13 +202,25 @@ public sealed class VacationService(CurrentTenantService currentTenant, TenantDb
         await using var db = await OpenAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         await db.Database.ExecuteSqlRawAsync("LOCK TABLE vacation_movement IN SHARE ROW EXCLUSIVE MODE", ct);
+        var result = await ReverseConsumptionInTransactionAsync(db, consumptionKey, ct);
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
+    internal static async Task<IReadOnlyList<VacationMovement>> ReverseConsumptionInTransactionAsync(
+        TenantDbContext db,
+        string consumptionKey,
+        CancellationToken ct)
+    {
         var key = "reversal:" + consumptionKey;
         var existing = await db.VacationMovements.Where(x => x.OperationKey == key).ToListAsync(ct);
         if (existing.Count > 0) return existing;
         var consumed = await db.VacationMovements.Where(x => x.OperationKey == consumptionKey && x.Type == VacationMovementTypes.Consume).ToListAsync(ct);
         if (consumed.Count == 0) throw new InvalidOperationException("No existe el consumo indicado.");
         var result = consumed.Select(x => new VacationMovement { VacationPeriodId = x.VacationPeriodId, Type = VacationMovementTypes.Reversal, LegalDays = x.LegalDays, AdditionalDays = x.AdditionalDays, OperationKey = key, SourceMovementId = x.Id, Note = "Reversión de consumo" }).ToList();
-        db.VacationMovements.AddRange(result); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return result;
+        db.VacationMovements.AddRange(result);
+        await db.SaveChangesAsync(ct);
+        return result;
     }
 
     private async Task<IReadOnlyList<VacationMovement>> ResolveReservationAsync(string reservationKey, string type, string prefix, CancellationToken ct)
@@ -196,13 +228,27 @@ public sealed class VacationService(CurrentTenantService currentTenant, TenantDb
         await using var db = await OpenAsync(ct);
         await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
         await db.Database.ExecuteSqlRawAsync("LOCK TABLE vacation_movement IN SHARE ROW EXCLUSIVE MODE", ct);
+        var result = await ResolveReservationInTransactionAsync(db, reservationKey, type, prefix, ct);
+        await tx.CommitAsync(ct);
+        return result;
+    }
+
+    internal static async Task<IReadOnlyList<VacationMovement>> ResolveReservationInTransactionAsync(
+        TenantDbContext db,
+        string reservationKey,
+        string type,
+        string prefix,
+        CancellationToken ct)
+    {
         var key = prefix + reservationKey;
         var existing = await db.VacationMovements.Where(x => x.OperationKey == key && x.Type == type).ToListAsync(ct);
         if (existing.Count > 0) return existing;
         var reserved = await db.VacationMovements.Where(x => x.OperationKey == reservationKey && x.Type == VacationMovementTypes.Reserve).ToListAsync(ct);
         if (reserved.Count == 0) throw new InvalidOperationException("No existe la reserva indicada.");
         var result = reserved.Select(x => new VacationMovement { VacationPeriodId = x.VacationPeriodId, Type = type, LegalDays = x.LegalDays, AdditionalDays = x.AdditionalDays, OperationKey = key, SourceMovementId = x.Id, Note = type == VacationMovementTypes.Consume ? "Consumo definitivo" : "Liberación de reserva" }).ToList();
-        db.VacationMovements.AddRange(result); await db.SaveChangesAsync(ct); await tx.CommitAsync(ct); return result;
+        db.VacationMovements.AddRange(result);
+        await db.SaveChangesAsync(ct);
+        return result;
     }
 
     private static decimal ComponentAvailable(IEnumerable<VacationMovement> values, bool legal)

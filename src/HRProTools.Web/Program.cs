@@ -77,6 +77,7 @@ builder.Services.AddScoped<TenantBrandingService>();
 builder.Services.AddScoped<EmployeeAccessService>();
 builder.Services.AddScoped<WorkCalendarService>();
 builder.Services.AddScoped<VacationService>();
+builder.Services.AddScoped<VacationRequestService>();
 builder.Services.AddScoped<EmployeeExcelImportService>();
 builder.Services.AddHostedService<VacationAccrualHostedService>();
 
@@ -98,7 +99,6 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
     {
         await using var tenantDb = tenantFactory.Create(schemaName);
         await tenantDb.Database.MigrateAsync();
-        await WorkCalendarService.EnsureDefaultAssignmentsAsync(tenantDb);
     }
 }
 

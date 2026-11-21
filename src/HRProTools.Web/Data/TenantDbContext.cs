@@ -18,6 +18,9 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<VacationPolicy> VacationPolicies => Set<VacationPolicy>();
     public DbSet<VacationPeriod> VacationPeriods => Set<VacationPeriod>();
     public DbSet<VacationMovement> VacationMovements => Set<VacationMovement>();
+    public DbSet<VacationRequest> VacationRequests => Set<VacationRequest>();
+    public DbSet<VacationRequestDay> VacationRequestDays => Set<VacationRequestDay>();
+    public DbSet<VacationRequestAllocation> VacationRequestAllocations => Set<VacationRequestAllocation>();
     public DbSet<TenantImportBatch> ImportBatches => Set<TenantImportBatch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -189,6 +192,48 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.Property(x => x.Note).HasMaxLength(300);
             entity.HasIndex(x => new { x.OperationKey, x.VacationPeriodId, x.Type }).IsUnique();
             entity.HasOne(x => x.VacationPeriod).WithMany().HasForeignKey(x => x.VacationPeriodId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationRequest>(entity =>
+        {
+            entity.ToTable("vacation_request", table =>
+            {
+                table.HasCheckConstraint("ck_vacation_request_dates", "\"EndDate\" >= \"StartDate\"");
+                table.HasCheckConstraint("ck_vacation_request_days", "\"RequestedDays\" > 0");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.ReservationKey).HasMaxLength(120);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.RequestedByUserId).HasMaxLength(450);
+            entity.Property(x => x.DecisionComment).HasMaxLength(500);
+            entity.Property(x => x.DecidedByUserId).HasMaxLength(450);
+            entity.HasIndex(x => x.ReservationKey).IsUnique();
+            entity.HasIndex(x => new { x.EmploymentId, x.Status });
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationRequestDay>(entity =>
+        {
+            entity.ToTable("vacation_request_day");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.WorkScheduleName).HasMaxLength(160);
+            entity.Property(x => x.HolidayName).HasMaxLength(160);
+            entity.HasIndex(x => new { x.VacationRequestId, x.Date }).IsUnique();
+            entity.HasOne(x => x.VacationRequest).WithMany(x => x.Dates).HasForeignKey(x => x.VacationRequestId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.WorkSchedule).WithMany().HasForeignKey(x => x.WorkScheduleId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<VacationRequestAllocation>(entity =>
+        {
+            entity.ToTable("vacation_request_allocation", table =>
+                table.HasCheckConstraint("ck_vacation_request_allocation_days", "\"LegalDays\" >= 0 AND \"AdditionalDays\" >= 0 AND (\"LegalDays\" <> 0 OR \"AdditionalDays\" <> 0)"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.LegalDays).HasPrecision(6, 2);
+            entity.Property(x => x.AdditionalDays).HasPrecision(6, 2);
+            entity.HasIndex(x => x.ReservationMovementId).IsUnique();
+            entity.HasOne(x => x.VacationRequest).WithMany(x => x.Allocations).HasForeignKey(x => x.VacationRequestId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.VacationPeriod).WithMany().HasForeignKey(x => x.VacationPeriodId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.ReservationMovement).WithMany().HasForeignKey(x => x.ReservationMovementId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<TenantImportBatch>(entity =>

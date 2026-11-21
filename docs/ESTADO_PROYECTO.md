@@ -1,8 +1,39 @@
 # Estado del proyecto HR ProTools
 
-**Fecha:** 19/11/2026
-**Fase actual:** Fase 3/5 - usuarios, vacaciones e importacion Excel
-**Estado:** Implementada y verificada; Fase 4 no iniciada.
+**Fecha:** 21/11/2026
+**Fase actual:** Fase 4/5 - solicitudes de vacaciones
+**Estado:** Regla funcional de computo y flujo de vacaciones implementados y verificados; los demas alcances de Fase 4 no fueron iniciados.
+
+## Implementado en Fase 4
+
+### Jornada contractual obligatoria
+
+- El alta individual exige seleccionar expresamente una jornada laboral activa. No se asigna una jornada estandar ni la primera jornada disponible de forma silenciosa.
+- La importacion Excel exige la columna `Jornada laboral` con una jornada activa existente; una fila sin jornada se rechaza antes de confirmar el lote.
+- Los cambios de jornada conservan las vigencias historicas. El calculo resuelve la jornada aplicable fecha por fecha y falla de forma segura si existe una fecha sin jornada o con vigencias superpuestas.
+
+### Computo y evidencia de la solicitud
+
+- `/empleado/vacaciones` permite indicar un intervalo inclusivo y muestra, antes de confirmar, cada fecha, la jornada vigente, el descanso semanal, el feriado aplicable y la cantidad exacta de dias que se reservaran.
+- Se cuentan solamente los dias contractuales de trabajo. Se excluyen los feriados de la empresa y no se descuentan los dias de descanso semanal. Una jornada contractual que incluye domingo computa ese domingo salvo que sea feriado.
+- La solicitud persiste una instantanea por fecha con la jornada, el feriado y la decision de computo. Cambios posteriores del calendario o de la jornada no alteran la solicitud registrada.
+- La regla funcional fue aprobada por producto. Queda **pendiente de validacion juridica** confirmar su correspondencia con la expresion legal `dias habiles corridos`; el sistema no presenta esta interpretacion como dictamen legal.
+
+### Reserva, aprobacion y cancelacion FIFO
+
+- La creacion reserva siempre el saldo del periodo mas antiguo, incluso si esta parcialmente consumido, y continua por los periodos siguientes cuando el primero no alcanza.
+- Se guardan las asignaciones exactas por periodo. Aprobar convierte esas mismas reservas en consumo; rechazar libera las reservas originales; cancelar libera una solicitud pendiente o revierte exactamente los consumos originales de una aprobada.
+- Las transiciones son transaccionales e idempotentes. Repetir una operacion no duplica movimientos y el ledger no permite saldos negativos.
+- `/tenant/vacaciones/solicitudes` permite a `TenantAdministrator` y `HR` consultar las solicitudes pendientes y aprobarlas o rechazarlas. El funcionario consulta y cancela solamente sus propias solicitudes.
+- Se reutilizaron `WorkCalendarService`, los historiales de jornada, los feriados y `VacationService`; no se creo un segundo motor de calendario ni de FIFO.
+
+### Verificacion de esta entrega
+
+- Casos cubiertos: lunes a viernes, lunes a sabado, jornada que incluye domingo, uno o varios feriados, cambio de jornada con vigencia y consumo en varios periodos empezando por uno parcialmente consumido.
+- Tambien se verifica la instantanea inmutable, aprobacion/rechazo/cancelacion repetidos, ausencia de duplicados, saldos no negativos, jornada obligatoria en alta individual y rechazo del Excel sin jornada.
+- La migracion tenant `Phase4VacationRequests` agrega solicitudes, detalle diario y asignaciones FIFO sin modificar los motores existentes.
+- `dotnet format --verify-no-changes`, compilacion Release con advertencias como errores y las 26 pruebas completas finalizaron correctamente; ambos modelos EF no tienen cambios pendientes.
+- No se desarrollaron otros modulos de Fase 4.
 
 ## Implementado en Fase 3
 
@@ -19,7 +50,7 @@
 ### Jornadas y feriados
 
 - `/tenant/jornadas` permite crear jornadas con dias de lunes a domingo, hora inicial/final y descanso opcional, y registrar feriados por empresa.
-- Cada alta recibe una jornada. Los vinculos existentes sin jornada reciben `Jornada estandar` al iniciar con migraciones habilitadas.
+- Cada alta individual y cada fila de importacion deben indicar una jornada; no existe asignacion estandar implicita.
 - Los cambios de jornada crean una nueva vigencia y cierran la anterior; no se sobrescribe el historial.
 - Jornadas, feriados y reglas legales de vacaciones permanecen conceptualmente separados. No se implementaron marcaciones, horas extras ni asistencia.
 
@@ -46,14 +77,16 @@
 
 - Ley 213/93, arts. 218-226: derecho despues de cada ano continuo, tramos 12/18/30, otorgamiento dentro de seis meses y registro de goce. Fuente: https://www.bacn.gov.py/leyes-paraguayas/2608/ley
 - La comunicacion MTESS sobre Resolucion 1290/2024 confirma aniversario, tramos, seis meses, inicio lunes/habil, preaviso y fraccionamiento: https://www.mtess.gov.py/?p=30145
-- La ley publicada usa `dias corridos` y la comunicacion MTESS usa `dias habiles`. En Fase 3 se conserva la cantidad reconocida y se separan jornada/feriados; el computo de fechas de una solicitud se implementara en Fase 4 con la regla funcional definitiva.
-- No se implementaron trabajadores zafrales, liquidacion/indemnizacion, solicitudes, aprobaciones, notificaciones de alerta ni alcances por empresa/departamento.
+- La ley publicada usa `dias corridos` y la comunicacion MTESS usa `dias habiles`. La regla funcional de solicitud fue definida en Fase 4, pero su correspondencia con `dias habiles corridos` sigue pendiente de validacion juridica.
+- No se implementaron trabajadores zafrales, liquidacion/indemnizacion, notificaciones de alerta ni alcances configurables por empresa/departamento.
 
 ### Rutas de navegacion Fase 3
 
 - Nomina y acceso: `/tenant/funcionarios` -> `Ficha` -> `Acceso al sistema`.
 - Vacaciones individuales: `/tenant/funcionarios/{employmentId}` -> `Vacaciones`.
 - Autoservicio: `/empleado`.
+- Solicitud propia de vacaciones: `/empleado/vacaciones`.
+- Aprobacion administrativa de solicitudes: `/tenant/vacaciones/solicitudes`.
 - Jornadas y feriados: `/tenant/jornadas`.
 - Politicas: `/tenant/vacaciones/politicas`.
 - Importacion: `/tenant/importacion`.
@@ -189,8 +222,9 @@
 2. Repetir manualmente el envio/recepcion y aportar los encabezados completos si el correo vuelve a SPAM.
 3. Configurar `Application:PublicBaseUrl` con el dominio HTTPS real antes de enviar invitaciones desde un ambiente publicado.
 4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
-5. Antes de Fase 4 debe aprobarse la regla definitiva para convertir cantidades de vacaciones en fechas de solicitud ante la diferencia `dias corridos`/`dias habiles` documentada.
+5. Obtener validacion juridica documentada sobre la correspondencia entre la regla funcional aprobada y la expresion legal `dias habiles corridos`.
+6. Permanecen fuera de esta entrega de Fase 4 los alcances configurables de aprobador por departamento/empresa, el flujo jefe -> RR. HH., notificaciones y demas solicitudes de permisos.
 
 ## Proxima actividad autorizada
 
-Ninguna implementacion de Fase 4 fue iniciada. El siguiente trabajo requiere autorizacion explicita.
+Continuar solamente con los alcances restantes de Fase 4 que el responsable del producto autorice expresamente. No iniciar Fase 5.

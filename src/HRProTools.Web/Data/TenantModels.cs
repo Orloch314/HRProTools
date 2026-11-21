@@ -218,6 +218,62 @@ public sealed class VacationMovement
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
+public static class VacationRequestStatuses
+{
+    public const string Pending = "PENDING";
+    public const string Approved = "APPROVED";
+    public const string Rejected = "REJECTED";
+    public const string Cancelled = "CANCELLED";
+}
+
+public sealed class VacationRequest
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public int RequestedDays { get; set; }
+    public string ReservationKey { get; set; } = string.Empty;
+    public string Status { get; set; } = VacationRequestStatuses.Pending;
+    public string RequestedByUserId { get; set; } = string.Empty;
+    public string DecisionComment { get; set; } = string.Empty;
+    public string? DecidedByUserId { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? DecidedAtUtc { get; set; }
+    public DateTimeOffset? CancelledAtUtc { get; set; }
+    public List<VacationRequestDay> Dates { get; set; } = [];
+    public List<VacationRequestAllocation> Allocations { get; set; } = [];
+}
+
+public sealed class VacationRequestDay
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VacationRequestId { get; set; }
+    public VacationRequest VacationRequest { get; set; } = null!;
+    public DateOnly Date { get; set; }
+    public Guid WorkScheduleId { get; set; }
+    public WorkSchedule WorkSchedule { get; set; } = null!;
+    public string WorkScheduleName { get; set; } = string.Empty;
+    public bool IsScheduledWorkday { get; set; }
+    public bool IsHoliday { get; set; }
+    public string HolidayName { get; set; } = string.Empty;
+    public bool CountsAsVacationDay { get; set; }
+}
+
+public sealed class VacationRequestAllocation
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid VacationRequestId { get; set; }
+    public VacationRequest VacationRequest { get; set; } = null!;
+    public Guid VacationPeriodId { get; set; }
+    public VacationPeriod VacationPeriod { get; set; } = null!;
+    public Guid ReservationMovementId { get; set; }
+    public VacationMovement ReservationMovement { get; set; } = null!;
+    public decimal LegalDays { get; set; }
+    public decimal AdditionalDays { get; set; }
+}
+
 public sealed class TenantImportBatch
 {
     public Guid Id { get; set; } = Guid.NewGuid();

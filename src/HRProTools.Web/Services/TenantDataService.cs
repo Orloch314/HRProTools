@@ -34,7 +34,7 @@ public sealed class EmployeeForm
     [EmailAddress, MaxLength(320)] public string Email { get; set; } = string.Empty;
     [MaxLength(40)] public string Phone { get; set; } = string.Empty;
     [Range(0.01, 999999999999)] public decimal GrossSalary { get; set; }
-    public Guid WorkScheduleId { get; set; }
+    [Required] public Guid? WorkScheduleId { get; set; }
     public bool SendAccessInvitation { get; set; }
 }
 
@@ -310,9 +310,9 @@ public sealed class TenantDataService(
                 GrossSalary = form.GrossSalary,
                 ValidFrom = form.StartDate
             });
-            var scheduleId = form.WorkScheduleId;
+            var scheduleId = form.WorkScheduleId ?? Guid.Empty;
             if (scheduleId == Guid.Empty)
-                scheduleId = await EnsureDefaultWorkScheduleAsync(db, cancellationToken);
+                throw new InvalidOperationException("Seleccione expresamente la jornada laboral contractual.");
             if (!await db.WorkSchedules.AnyAsync(x => x.Id == scheduleId && x.IsActive, cancellationToken))
                 throw new InvalidOperationException("Seleccione una jornada laboral activa.");
             db.EmploymentWorkSchedules.Add(new EmploymentWorkSchedule
@@ -412,20 +412,4 @@ public sealed class TenantDataService(
     private static string NormalizeDocument(string value) =>
         new(value.Where(char.IsLetterOrDigit).Select(char.ToUpperInvariant).ToArray());
 
-    private static async Task<Guid> EnsureDefaultWorkScheduleAsync(TenantDbContext db, CancellationToken cancellationToken)
-    {
-        var existing = await db.WorkSchedules.Where(x => x.IsActive).OrderBy(x => x.Name)
-            .Select(x => (Guid?)x.Id).FirstOrDefaultAsync(cancellationToken);
-        if (existing is not null) return existing.Value;
-        var schedule = new WorkSchedule
-        {
-            Name = "Jornada estándar",
-            StartTime = new TimeOnly(8, 0),
-            EndTime = new TimeOnly(17, 0),
-            BreakStart = new TimeOnly(12, 0),
-            BreakEnd = new TimeOnly(13, 0)
-        };
-        db.WorkSchedules.Add(schedule);
-        return schedule.Id;
-    }
 }
