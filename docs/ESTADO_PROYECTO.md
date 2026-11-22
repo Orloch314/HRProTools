@@ -40,6 +40,15 @@
 - `dotnet test`: 47 pruebas superadas, 0 fallidas y 0 omitidas. Las cinco pruebas nuevas cubren autorizacion y trazabilidad de ausencias, documentos, alertas sin duplicados, dashboard multirol y reapertura del Excel con filtros.
 - Ambos contextos EF quedan sin cambios de modelo pendientes y `/health` respondio `Healthy` en una instancia Release temporal.
 
+### Cierre Git de la Fase 5
+
+- Rama de cierre: `codex/phase5-mvp-completion`.
+- Remoto oficial: `origin` -> `https://github.com/Orloch314/HRProTools`.
+- Commit funcional final de la Fase 5: `a248a44500f0dfc75f1ac133b140f1213a88e6d0` (`feat: complete phase 5 absences alerts dashboards and reports`).
+- Publicacion verificada: `refs/heads/codex/phase5-mvp-completion` en GitHub apunta al mismo commit `a248a44500f0dfc75f1ac133b140f1213a88e6d0`.
+- Estado Git comprobado antes de incorporar este cierre documental: arbol de trabajo limpio, rama local enlazada con `origin/codex/phase5-mvp-completion` y diferencia local/remota `0/0`.
+- La actualizacion documental de este apartado se incorpora en un commit posterior, sin cambios funcionales; su hash y el resultado real del push se consignan en el informe final de la tarea.
+
 ### Prueba manual recomendada
 
 - Funcionario: `/empleado/ausencias` -> declarar -> consultar estado.
