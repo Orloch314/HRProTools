@@ -348,6 +348,125 @@ public sealed class VacationRequestAllocation
     public decimal AdditionalDays { get; set; }
 }
 
+public static class PermissionRequestTypes
+{
+    public const string Paid = "PAID";
+    public const string Unpaid = "UNPAID";
+}
+
+public static class PermissionRequestUnits
+{
+    public const string Days = "DAYS";
+    public const string Hours = "HOURS";
+}
+
+public static class PermissionRequestStatuses
+{
+    public const string Pending = VacationRequestStatuses.Pending;
+    public const string Approved = VacationRequestStatuses.Approved;
+    public const string Rejected = VacationRequestStatuses.Rejected;
+    public const string Cancelled = VacationRequestStatuses.Cancelled;
+}
+
+public sealed class PermissionRequest
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public Guid CompanyId { get; set; }
+    public Guid DepartmentId { get; set; }
+    public string PermissionType { get; set; } = PermissionRequestTypes.Paid;
+    public string Unit { get; set; } = PermissionRequestUnits.Days;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public TimeOnly? StartTime { get; set; }
+    public TimeOnly? EndTime { get; set; }
+    public int RequestedDays { get; set; }
+    public int RequestedMinutes { get; set; }
+    public string Reason { get; set; } = string.Empty;
+    public string Status { get; set; } = PermissionRequestStatuses.Pending;
+    public string RequestedByUserId { get; set; } = string.Empty;
+    public string DecisionComment { get; set; } = string.Empty;
+    public string? DecidedByUserId { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? DecidedAtUtc { get; set; }
+    public string? CancelledByUserId { get; set; }
+    public string CancellationReason { get; set; } = string.Empty;
+    public DateTimeOffset? CancelledAtUtc { get; set; }
+    public List<PermissionRequestDay> Dates { get; set; } = [];
+    public List<PermissionApprovalStep> ApprovalSteps { get; set; } = [];
+}
+
+public sealed class PermissionRequestDay
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PermissionRequestId { get; set; }
+    public PermissionRequest PermissionRequest { get; set; } = null!;
+    public DateOnly Date { get; set; }
+    public Guid WorkScheduleId { get; set; }
+    public string WorkScheduleName { get; set; } = string.Empty;
+    public TimeOnly WorkStart { get; set; }
+    public TimeOnly WorkEnd { get; set; }
+    public TimeOnly? BreakStart { get; set; }
+    public TimeOnly? BreakEnd { get; set; }
+    public bool IsScheduledWorkday { get; set; }
+    public bool IsHoliday { get; set; }
+    public string HolidayName { get; set; } = string.Empty;
+    public bool CountsAsPermissionDay { get; set; }
+    public int EffectiveMinutes { get; set; }
+}
+
+public sealed class PermissionApprovalStep
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PermissionRequestId { get; set; }
+    public PermissionRequest PermissionRequest { get; set; } = null!;
+    public int Sequence { get; set; }
+    public string Name { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public string Status { get; set; } = VacationApprovalStepStatuses.Waiting;
+    public Guid DepartmentId { get; set; }
+    public Guid CompanyId { get; set; }
+    public string? DecidedByUserId { get; set; }
+    public string DecisionComment { get; set; } = string.Empty;
+    public DateTimeOffset? DecidedAtUtc { get; set; }
+    public List<PermissionApprovalStepActor> Actors { get; set; } = [];
+}
+
+public sealed class PermissionApprovalStepActor
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PermissionApprovalStepId { get; set; }
+    public PermissionApprovalStep PermissionApprovalStep { get; set; } = null!;
+    public string UserId { get; set; } = string.Empty;
+}
+
+public static class NotificationOutboxStatuses
+{
+    public const string Pending = "PENDING";
+    public const string Sent = "SENT";
+    public const string Failed = "FAILED";
+}
+
+public sealed class NotificationOutboxItem
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string EventKey { get; set; } = string.Empty;
+    public string EventType { get; set; } = string.Empty;
+    public string RequestType { get; set; } = string.Empty;
+    public Guid RequestId { get; set; }
+    public string RecipientUserId { get; set; } = string.Empty;
+    public string Subject { get; set; } = string.Empty;
+    public string HtmlBody { get; set; } = string.Empty;
+    public string Status { get; set; } = NotificationOutboxStatuses.Pending;
+    public int AttemptCount { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? NextAttemptAtUtc { get; set; }
+    public DateTimeOffset? LastAttemptAtUtc { get; set; }
+    public DateTimeOffset? SentAtUtc { get; set; }
+    public string LastError { get; set; } = string.Empty;
+}
+
 public sealed class TenantImportBatch
 {
     public Guid Id { get; set; } = Guid.NewGuid();

@@ -1,10 +1,11 @@
 @page "/tenant/vacaciones/circuito"
 @attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
 @inject VacationWorkflowService Workflow
+@inject NotificationOutboxService Outbox
 
-<PageTitle>Circuito de vacaciones - HR ProTools</PageTitle>
+<PageTitle>Circuito de solicitudes - HR ProTools</PageTitle>
 
-<div class="page-heading"><div><span class="eyebrow">Administración tenant</span><h1>Circuito de aprobación</h1><p>Configure niveles y alcances. Los cambios se aplican solamente a nuevas solicitudes.</p></div><a class="btn-secondary" href="tenant/vacaciones/solicitudes">Ver solicitudes</a></div>
+<div class="page-heading"><div><span class="eyebrow">Administración tenant</span><h1>Circuito de aprobación</h1><p>Configuración compartida por vacaciones y permisos. Los cambios se aplican solamente a nuevas solicitudes.</p></div><a class="btn-secondary" href="tenant/solicitudes">Ver solicitudes</a></div>
 @if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
 
 @if (configuration is null) { <p>Cargando configuración…</p> }
@@ -50,6 +51,16 @@ else
         <button class="btn-primary" @onclick="SaveCancellationAsync">Guardar configuración</button>
     </section>
 
+    @if (outbox is not null)
+    {
+        <section class="panel">
+            <div class="panel-title"><div><h2>Notificaciones por correo</h2><p>Los errores SMTP no revierten solicitudes ni decisiones.</p></div><button class="btn-secondary" disabled="@(outbox.Failed == 0)" @onclick="RetryNotificationsAsync">Reintentar fallidas</button></div>
+            <div class="detail-grid compact"><div><span>Pendientes</span><strong>@outbox.Pending</strong></div><div><span>Fallidas</span><strong>@outbox.Failed</strong></div><div><span>Enviadas</span><strong>@outbox.Sent</strong></div></div>
+            @if (!outbox.SmtpConfigured) { <div class="notice">SMTP no está configurado. Las solicitudes continúan funcionando y los avisos permanecen pendientes.</div> }
+            @if (!string.IsNullOrWhiteSpace(outbox.LastError)) { <div class="notice notice-error">Último error: @outbox.LastError</div> }
+        </section>
+    }
+
     @if (configuration.PendingRequestsWithoutCircuit > 0)
     {
         <section class="panel editor-accent"><h2>Solicitudes anteriores</h2><div class="notice notice-error">Hay @configuration.PendingRequestsWithoutCircuit solicitud(es) pendiente(s) creadas con el circuito anterior. Conservan sus reservas y requieren regularización expresa.</div><button class="btn-primary" @onclick="RegularizeAsync">Aplicar el circuito actual a las pendientes</button></section>
@@ -58,6 +69,7 @@ else
 
 @code {
     private VacationWorkflowConfiguration? configuration;
+    private NotificationOutboxSummary? outbox;
     private readonly List<LevelEdit> levels = [];
     private readonly HashSet<string> selectedApprovers = new(StringComparer.Ordinal);
     private readonly HashSet<Guid> selectedHrCompanies = [];
@@ -70,6 +82,7 @@ else
     private async Task ReloadAsync()
     {
         configuration = await Workflow.GetConfigurationAsync();
+        outbox = await Outbox.GetSummaryAsync();
         levels.Clear(); levels.AddRange(configuration.Levels.Select(x => new LevelEdit { Id = x.Id, Sequence = x.Sequence, Name = x.Name, Type = x.Type }));
         selectedDepartmentId = configuration.Departments.FirstOrDefault()?.Id ?? Guid.Empty;
         selectedHrUserId = configuration.HumanResourcesUsers.FirstOrDefault()?.Id ?? string.Empty;
@@ -85,6 +98,7 @@ else
     private async Task SaveHrScopeAsync() => await ExecuteAsync(async () => { await Workflow.SaveHumanResourcesScopeAsync(selectedHrUserId, hrEntireGroup, selectedHrCompanies.ToList()); await ReloadAsync(); }, "Alcance de Recursos Humanos actualizado.");
     private async Task SaveCancellationAsync() => await ExecuteAsync(() => Workflow.SaveCancellationSettingAsync(allowCancellation), "Configuración de cancelación actualizada.");
     private async Task RegularizeAsync() => await ExecuteAsync(async () => { var count = await Workflow.RegularizePendingRequestsAsync(); await ReloadAsync(); message = $"Se regularizaron {count} solicitud(es) sin alterar sus reservas."; }, string.Empty);
+    private async Task RetryNotificationsAsync() => await ExecuteAsync(async () => { await Outbox.RetryFailedAsync(); await ReloadAsync(); }, "Las notificaciones fallidas quedaron preparadas para un nuevo intento.");
     private async Task ExecuteAsync(Func<Task> action, string success) { try { await action(); hasError = false; if (!string.IsNullOrWhiteSpace(success)) message = success; } catch (Exception ex) { hasError = true; message = ex.Message; } }
     private sealed class LevelEdit { public Guid? Id { get; set; } public int Sequence { get; set; } public string Name { get; set; } = string.Empty; public string Type { get; set; } = string.Empty; }
 }

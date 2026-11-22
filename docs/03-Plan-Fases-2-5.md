@@ -102,6 +102,8 @@
 9. Cancelacion con reglas de estado y registro basico de operaciones.
 10. Configuracion tenant para habilitar o deshabilitar la cancelacion de solicitudes.
 11. Alcances de Recursos Humanos por empresa y autorizadores por departamento.
+12. Permisos con/sin goce por dias u horas, con instantanea de jornada y control de superposiciones.
+13. Outbox PostgreSQL para notificaciones de vacaciones y permisos, envio MailKit y reintentos controlados.
 
 ### Dependencias
 
@@ -119,12 +121,14 @@
 - El consumo se aplica siempre al periodo disponible mas antiguo.
 - Reintentos o doble clic no duplican aprobaciones ni movimientos.
 - Un usuario normal solo accede a su autoservicio y sus solicitudes.
+- Un permiso reutiliza el circuito sin crear movimientos en el ledger de vacaciones.
+- Las notificaciones persisten aunque SMTP falle y una misma transicion no duplica eventos.
 
 ## Fase 5 - Ausencias, alertas, reportes Excel y despliegue
 
 ### Funcionalidades
 
-1. Registro de ausencias, reposos, permisos/justificaciones asociados al vinculo.
+1. Registro de ausencias, reposos y justificaciones asociados al vinculo, sin reconstruir los permisos de Fase 4.
 2. Adjuntos escaneados con ClamAV y acceso autorizado.
 3. Alertas operativas: vacaciones por vencer, solicitudes pendientes y ausencias relevantes.
 4. Dashboard coherente con el mockup, sin metricas no respaldadas por datos.

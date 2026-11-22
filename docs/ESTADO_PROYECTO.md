@@ -1,10 +1,35 @@
 # Estado del proyecto HR ProTools
 
-**Fecha:** 21/11/2026
-**Fase actual:** Fase 4/5 - solicitudes de vacaciones
-**Estado:** Computo, FIFO y circuito secuencial Jefe -> Recursos Humanos implementados y verificados; no se inicio la Fase 5.
+**Fecha:** 22/11/2026
+**Fase actual:** Fase 4/5 - solicitudes de vacaciones, permisos y notificaciones
+**Estado:** Fase 4 completada y verificada; no se inicio la Fase 5.
 
 ## Implementado en Fase 4
+
+### Solicitudes de permisos
+
+- `/empleado/permisos` permite solicitar permisos con o sin goce de salario, sin ejecutar calculos de nomina ni deducciones.
+- Los permisos por dias computan solamente dias contractuales de trabajo y excluyen descansos y feriados de la empresa. Los permisos por horas validan el intervalo dentro de la jornada y descuentan la interseccion con el descanso configurado.
+- La duracion horaria se conserva en minutos enteros y nunca se convierte automaticamente en un dia. Se rechazan intervalos invertidos, fuera de la jornada o compuestos solamente por el descanso.
+- Cada solicitud conserva empresa, departamento, tipo, unidad, motivo y una instantanea diaria de jornada, horarios, descanso y feriado. Cambios posteriores no alteran la duracion historica.
+- Se rechazan en backend superposiciones entre permisos pendientes/aprobados y entre permisos y vacaciones pendientes/aprobadas. Las solicitudes rechazadas o canceladas no bloquean intervalos nuevos.
+- Los permisos reutilizan la configuracion y los alcances del circuito de vacaciones, pero sus aprobaciones no reservan, consumen ni modifican el ledger de vacaciones.
+- El funcionario consulta estado, nivel pendiente e historial completo; puede cancelar solicitudes pendientes o aprobadas cuando la configuracion tenant lo permite. Las decisiones anteriores permanecen intactas.
+
+### Circuito compartido y bandeja operativa
+
+- `/tenant/solicitudes` ofrece pestañas de vacaciones y permisos, separa pendientes de solicitudes procesadas y muestra el circuito copiado al presentar.
+- Jefe/Autorizador y Recursos Humanos mantienen los mismos controles de rol, departamento, empresa, nivel actual, tenant, cuenta activa y prohibicion de autoaprobacion.
+- `TenantAdministrator` configura el circuito en `/tenant/vacaciones/circuito`, pero no recibe capacidad operativa ni datos personales por ese rol.
+- Los reintentos y dobles clics no duplican decisiones. Un rechazo en cualquier nivel finaliza el circuito; una aprobacion intermedia avanza solamente al nivel siguiente.
+
+### Notificaciones persistentes
+
+- Presentacion, avance de nivel, aprobacion final, rechazo y cancelacion generan avisos en español para vacaciones y permisos.
+- Los autorizadores reciben el enlace a `/tenant/solicitudes`; el funcionario recibe el enlace a su propio historial. Solamente se agrega enlace cuando `Application:PublicBaseUrl` contiene una URL HTTPS valida.
+- Los eventos se guardan en `notification_outbox` dentro del schema tenant y usan una clave unica por transicion y destinatario. La transaccion de la solicitud termina antes del envio SMTP.
+- Un worker intenta el envio con MailKit, registra intentos, exito o error, aplica espera progresiva y marca fallida una notificacion despues de diez intentos. El administrador puede preparar nuevamente las fallidas desde la pantalla del circuito.
+- Si SMTP no esta configurado, las solicitudes siguen funcionando, los avisos permanecen pendientes y la configuracion tenant muestra expresamente la situacion.
 
 ### Jornada contractual obligatoria
 
@@ -31,12 +56,12 @@
 ### Circuito de aprobacion corregido
 
 - El circuito predeterminado y obligatorio es `Funcionario -> Jefe / Autorizador -> Recursos Humanos`. Puede contener niveles adicionales de las dos categorias soportadas, siempre manteniendo Jefatura antes de Recursos Humanos.
-- `/tenant/vacaciones/circuito`, disponible exclusivamente para `TenantAdministrator`, configura niveles y orden, autorizadores por departamento, alcance HR de grupo o empresas especificas y cancelacion por el funcionario.
+- `/tenant/vacaciones/circuito`, disponible exclusivamente para `TenantAdministrator`, configura niveles y orden, autorizadores por departamento, alcance HR de grupo o empresas especificas, cancelacion por el funcionario y estado del outbox.
 - Un autorizador puede cubrir varios departamentos y un departamento puede tener varios autorizadores. La decision valida de uno es suficiente; el bloqueo transaccional impide decisiones duplicadas o contradictorias.
 - Los usuarios HR reciben solicitudes solamente dentro de su alcance empresarial. Las asignaciones autorizadas quedan copiadas en cada solicitud, por lo que cambios posteriores de configuracion afectan solamente solicitudes nuevas.
 - `TenantAdministrator` no obtiene permiso operativo por su rol. Puede consultar el estado administrativo del circuito sin recibir datos personales; solamente actua si posee ademas el rol operativo y figura en el alcance copiado de la solicitud.
 - Cada aprobacion o rechazo vuelve a verificar en backend usuario activo, tenant, rol operativo, alcance copiado, nivel actual, estado y prohibicion de autoaprobacion. No es posible saltar niveles mediante identificadores o rutas.
-- `/tenant/vacaciones/solicitudes` muestra pendientes de mi aprobacion, solicitudes procesadas, nivel actual e historial. Los botones operativos aparecen solamente para el usuario habilitado en el paso pendiente.
+- `/tenant/solicitudes` muestra vacaciones y permisos pendientes de mi aprobacion, solicitudes procesadas, nivel actual e historial. La ruta anterior `/tenant/vacaciones/solicitudes` se conserva como compatibilidad.
 - La migracion tenant `CorrectVacationApprovalCircuit` agrega configuracion, alcances, pasos y actores. Inserta el circuito predeterminado sin alterar solicitudes ni movimientos existentes.
 - Antes de preparar la migracion se reviso el PostgreSQL local: ningun schema local contenia aun `vacation_request`. En ambientes donde existan solicitudes pendientes del circuito anterior, se conservan intactas con su reserva y aparecen como pendientes de regularizacion; el administrador debe aplicar expresamente el circuito actual desde la pantalla de configuracion. Solicitudes aprobadas o rechazadas no se modifican.
 
@@ -46,8 +71,23 @@
 - Tambien se verifica la instantanea inmutable, aprobacion/rechazo/cancelacion repetidos, ausencia de duplicados, saldos no negativos, jornada obligatoria en alta individual y rechazo del Excel sin jornada.
 - La migracion tenant `Phase4VacationRequests` agrega solicitudes, detalle diario y asignaciones FIFO sin modificar los motores existentes.
 - Los casos del circuito verifican reserva al presentar, aprobacion intermedia sin consumo, aprobacion final, rechazo en ambos niveles, administrador sin rol operativo, alcance incorrecto de departamento/empresa, autoaprobacion, reintentos, multiples autorizadores, configuracion inmutable, cancelacion configurable y regularizacion sin alterar la reserva.
-- `dotnet format --verify-no-changes`, compilacion Release con advertencias como errores y las 36 pruebas completas finalizaron correctamente; ambos modelos EF no tienen cambios pendientes.
-- No se desarrollaron otros modulos de Fase 4.
+- Los permisos verifican uno o varios dias, con/sin goce, horas, descuento de descanso, intervalos invalidos, limites de jornada, feriados y superposiciones con permisos o vacaciones.
+- El circuito de permisos verifica Jefe -> HR, rechazo en ambos niveles, administrador sin rol operativo, alcances incorrectos, autoaprobacion, doble clic y cancelacion configurable con conservacion del historial.
+- El outbox verifica destinatarios del primer y siguiente nivel, funcionario, error SMTP sin perdida de solicitud, reintento y ausencia de eventos duplicados. Las transiciones de vacaciones tambien generan avisos sin alterar FIFO.
+- La migracion tenant `Phase4PermissionsAndNotifications` agrega permisos, sus instantaneas/pasos y el outbox de forma aditiva. Se aplico a `Gruppo Prova` y `Grupo QA Funcional` sin recrear schemas ni modificar legajos o datos funcionales.
+- Compilacion Release: 0 advertencias y 0 errores. Las 42 pruebas completas finalizaron correctamente y ambos modelos EF no tienen cambios pendientes.
+
+### Rutas y prueba manual
+
+- Funcionario: `/empleado/permisos` -> calcular -> presentar -> consultar detalle o cancelar.
+- Autorizador/HR: `/tenant/solicitudes` -> `Permisos` -> resolver el nivel pendiente.
+- Administrador tenant: `/tenant/vacaciones/circuito` -> niveles, alcances, cancelacion y estado de notificaciones.
+- Casos manuales recomendados: permiso de varios dias con un feriado; permiso 11:00-14:00 con descanso 12:00-13:00; rechazo de un solapamiento; aprobacion Jefe -> HR; cancelacion posterior; SMTP deshabilitado con evento pendiente.
+
+### Limitaciones pendientes
+
+- Los permisos con/sin goce son clasificaciones administrativas: no existen liquidacion, descuento salarial ni integracion payroll.
+- No se agregaron adjuntos, certificados, ausencias, alertas ni reportes. Corresponden a la Fase 5 y requieren autorizacion expresa.
 
 ## Implementado en Fase 3
 

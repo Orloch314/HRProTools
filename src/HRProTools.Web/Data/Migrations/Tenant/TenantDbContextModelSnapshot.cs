@@ -333,6 +333,333 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("human_resources_scope", (string)null);
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.NotificationOutboxItem", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("AttemptCount")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("EventKey")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("HtmlBody")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("LastAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("LastError")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RecipientUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<Guid>("RequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("RequestType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)");
+
+                    b.Property<DateTimeOffset?>("SentAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Subject")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EventKey")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "NextAttemptAtUtc");
+
+                    b.ToTable("notification_outbox", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notification_outbox_attempts", "\"AttemptCount\" >= 0");
+
+                            t.HasCheckConstraint("ck_notification_outbox_status", "\"Status\" IN ('PENDING', 'SENT', 'FAILED')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionApprovalStep", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DecisionComment")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("PermissionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("Sequence")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionRequestId", "Sequence")
+                        .IsUnique();
+
+                    b.HasIndex("Status", "Type");
+
+                    b.ToTable("permission_approval_step", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_permission_approval_step_sequence", "\"Sequence\" > 0");
+
+                            t.HasCheckConstraint("ck_permission_approval_step_status", "\"Status\" IN ('WAITING', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')");
+
+                            t.HasCheckConstraint("ck_permission_approval_step_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionApprovalStepActor", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("PermissionApprovalStepId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("PermissionApprovalStepId", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("permission_approval_step_actor", (string)null);
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionRequest", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("CancellationReason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("CancelledAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CancelledByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DecidedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("DecidedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("DecisionComment")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<Guid>("DepartmentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("EmploymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly?>("EndTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<string>("PermissionType")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<string>("RequestedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<int>("RequestedDays")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("RequestedMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<TimeOnly?>("StartTime")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Unit")
+                        .IsRequired()
+                        .HasMaxLength(12)
+                        .HasColumnType("character varying(12)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmploymentId", "Status");
+
+                    b.HasIndex("StartDate", "EndDate");
+
+                    b.ToTable("permission_request", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_permission_request_dates", "\"EndDate\" >= \"StartDate\"");
+
+                            t.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND \"StartDate\" = \"EndDate\")");
+
+                            t.HasCheckConstraint("ck_permission_request_type", "\"PermissionType\" IN ('PAID', 'UNPAID')");
+
+                            t.HasCheckConstraint("ck_permission_request_unit", "\"Unit\" IN ('DAYS', 'HOURS')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionRequestDay", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<TimeOnly?>("BreakEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("BreakStart")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<bool>("CountsAsPermissionDay")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateOnly>("Date")
+                        .HasColumnType("date");
+
+                    b.Property<int>("EffectiveMinutes")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("HolidayName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<bool>("IsHoliday")
+                        .HasColumnType("boolean");
+
+                    b.Property<bool>("IsScheduledWorkday")
+                        .HasColumnType("boolean");
+
+                    b.Property<Guid>("PermissionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<TimeOnly>("WorkEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<Guid>("WorkScheduleId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("WorkScheduleName")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)");
+
+                    b.Property<TimeOnly>("WorkStart")
+                        .HasColumnType("time without time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionRequestId", "Date")
+                        .IsUnique();
+
+                    b.ToTable("permission_request_day", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_permission_request_day_minutes", "\"EffectiveMinutes\" >= 0");
+                        });
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Person", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1149,6 +1476,50 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("Company");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionApprovalStep", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.PermissionRequest", "PermissionRequest")
+                        .WithMany("ApprovalSteps")
+                        .HasForeignKey("PermissionRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PermissionRequest");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionApprovalStepActor", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.PermissionApprovalStep", "PermissionApprovalStep")
+                        .WithMany("Actors")
+                        .HasForeignKey("PermissionApprovalStepId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PermissionApprovalStep");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionRequest", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Employment", "Employment")
+                        .WithMany()
+                        .HasForeignKey("EmploymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employment");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionRequestDay", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.PermissionRequest", "PermissionRequest")
+                        .WithMany("Dates")
+                        .HasForeignKey("PermissionRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PermissionRequest");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.Position", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Company", "Company")
@@ -1288,6 +1659,18 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("VacationRequest");
 
                     b.Navigation("WorkSchedule");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionApprovalStep", b =>
+                {
+                    b.Navigation("Actors");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionRequest", b =>
+                {
+                    b.Navigation("ApprovalSteps");
+
+                    b.Navigation("Dates");
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStep", b =>

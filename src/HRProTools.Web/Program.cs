@@ -81,8 +81,12 @@ builder.Services.AddScoped<WorkCalendarService>();
 builder.Services.AddScoped<VacationService>();
 builder.Services.AddScoped<VacationWorkflowService>();
 builder.Services.AddScoped<VacationRequestService>();
+builder.Services.AddScoped<PermissionRequestService>();
+builder.Services.AddScoped<NotificationOutboxService>();
+builder.Services.AddScoped<INotificationEmailTransport, SmtpNotificationEmailTransport>();
 builder.Services.AddScoped<EmployeeExcelImportService>();
 builder.Services.AddHostedService<VacationAccrualHostedService>();
+builder.Services.AddHostedService<NotificationOutboxHostedService>();
 
 var app = builder.Build();
 

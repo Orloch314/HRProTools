@@ -14,6 +14,22 @@ public sealed record VacationWorkflowDepartment(Guid Id, Guid CompanyId, string 
 public sealed record VacationWorkflowCompany(Guid Id, string Name);
 public sealed record DepartmentApproverValue(Guid DepartmentId, string UserId);
 public sealed record HumanResourcesScopeValue(string UserId, Guid? CompanyId);
+public sealed record ApprovalStepSnapshot(
+    int Sequence,
+    string Name,
+    string Type,
+    string Status,
+    Guid DepartmentId,
+    Guid CompanyId,
+    IReadOnlyList<string> ActorUserIds);
+public sealed record RequestSelfLink(string UserId, Guid TenantId, string SchemaName, Guid EmploymentId);
+public sealed record RequestWorkflowActor(
+    string UserId,
+    Guid TenantId,
+    string SchemaName,
+    bool IsAdministrator,
+    bool IsApprover,
+    bool IsHumanResources);
 public sealed record VacationWorkflowConfiguration(
     IReadOnlyList<VacationApprovalLevelInput> Levels,
     IReadOnlyList<VacationWorkflowUser> Approvers,
@@ -145,17 +161,25 @@ public sealed class VacationWorkflowService(
             .ToListAsync(cancellationToken);
         foreach (var request in requests)
         {
-            var steps = await BuildSnapshotAsync(db, actor.Tenant.Id, request.EmploymentId, request.RequestedByUserId, cancellationToken);
-            foreach (var step in steps)
-                step.VacationRequestId = request.Id;
-            db.VacationApprovalSteps.AddRange(steps);
+            var snapshot = await BuildSnapshotAsync(db, actor.Tenant.Id, request.EmploymentId, request.RequestedByUserId, cancellationToken);
+            db.VacationApprovalSteps.AddRange(snapshot.Select(step => new VacationApprovalStep
+            {
+                VacationRequestId = request.Id,
+                Sequence = step.Sequence,
+                Name = step.Name,
+                Type = step.Type,
+                Status = step.Status,
+                DepartmentId = step.DepartmentId,
+                CompanyId = step.CompanyId,
+                Actors = step.ActorUserIds.Select(userId => new VacationApprovalStepActor { UserId = userId }).ToList()
+            }));
         }
         await db.SaveChangesAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
         return requests.Count;
     }
 
-    internal async Task<List<VacationApprovalStep>> BuildSnapshotAsync(
+    internal async Task<List<ApprovalStepSnapshot>> BuildSnapshotAsync(
         TenantDbContext db,
         Guid tenantId,
         Guid employmentId,
@@ -170,7 +194,7 @@ public sealed class VacationWorkflowService(
         var levels = await db.VacationApprovalLevels.AsNoTracking().Where(x => x.IsActive).OrderBy(x => x.Sequence).ToListAsync(cancellationToken);
         ValidateLevels(levels.Select(x => new VacationApprovalLevelInput(x.Id, x.Sequence, x.Name, x.Type)).ToList());
         var operationalUsers = await GetOperationalUsersAsync(tenantId, cancellationToken);
-        var steps = new List<VacationApprovalStep>();
+        var steps = new List<ApprovalStepSnapshot>();
         foreach (var level in levels)
         {
             List<string> actorIds;
@@ -194,18 +218,67 @@ public sealed class VacationWorkflowService(
                 var scope = level.Type == VacationApprovalLevelTypes.Approver ? "departamento" : "empresa";
                 throw new InvalidOperationException($"El nivel '{level.Name}' no tiene usuarios habilitados para el {scope} del funcionario. Solicite al administrador que configure el circuito.");
             }
-            steps.Add(new VacationApprovalStep
-            {
-                Sequence = level.Sequence,
-                Name = level.Name,
-                Type = level.Type,
-                Status = steps.Count == 0 ? VacationApprovalStepStatuses.Pending : VacationApprovalStepStatuses.Waiting,
-                DepartmentId = assignment.DepartmentId,
-                CompanyId = assignment.CompanyId,
-                Actors = actorIds.Select(userId => new VacationApprovalStepActor { UserId = userId }).ToList()
-            });
+            steps.Add(new ApprovalStepSnapshot(
+                level.Sequence,
+                level.Name,
+                level.Type,
+                steps.Count == 0 ? VacationApprovalStepStatuses.Pending : VacationApprovalStepStatuses.Waiting,
+                assignment.DepartmentId,
+                assignment.CompanyId,
+                actorIds));
         }
         return steps;
+    }
+
+    internal async Task<RequestSelfLink> GetSelfLinkAsync(CancellationToken cancellationToken = default)
+    {
+        var user = (await authenticationStateProvider.GetAuthenticationStateAsync()).User;
+        if (!user.IsInRole(AppRoles.Employee))
+            throw new UnauthorizedAccessException("No tiene acceso al autoservicio del funcionario.");
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new UnauthorizedAccessException();
+        var tenant = await currentTenant.GetRequiredAsync(cancellationToken);
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var globalDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        var employmentId = await globalDb.Users.AsNoTracking()
+            .Where(x => x.Id == userId && x.TenantId == tenant.Id && x.IsActive && x.ActiveEmploymentId != null)
+            .Select(x => x.ActiveEmploymentId)
+            .SingleOrDefaultAsync(cancellationToken)
+            ?? throw new UnauthorizedAccessException("La cuenta no está vinculada a un funcionario activo.");
+        return new RequestSelfLink(userId, tenant.Id, tenant.SchemaName, employmentId);
+    }
+
+    internal async Task<RequestWorkflowActor> GetWorkflowActorAsync(
+        bool requireOperationalRole,
+        CancellationToken cancellationToken = default)
+    {
+        var user = (await authenticationStateProvider.GetAuthenticationStateAsync()).User;
+        var userId = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new UnauthorizedAccessException();
+        var isAdministrator = user.IsInRole(AppRoles.TenantAdministrator);
+        var isApprover = user.IsInRole(AppRoles.Approver);
+        var isHumanResources = user.IsInRole(AppRoles.HumanResources);
+        if ((requireOperationalRole && !(isApprover || isHumanResources)) ||
+            (!requireOperationalRole && !(isAdministrator || isApprover || isHumanResources)))
+            throw new UnauthorizedAccessException("No tiene acceso operativo al circuito de solicitudes.");
+        var tenant = await currentTenant.GetRequiredAsync(cancellationToken);
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var globalDb = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        if (!await globalDb.Users.AsNoTracking().AnyAsync(
+                x => x.Id == userId && x.TenantId == tenant.Id && x.IsActive,
+                cancellationToken))
+            throw new UnauthorizedAccessException("La cuenta no está activa en este tenant.");
+        return new RequestWorkflowActor(userId, tenant.Id, tenant.SchemaName, isAdministrator, isApprover, isHumanResources);
+    }
+
+    internal async Task<Dictionary<string, string>> GetUserNamesAsync(
+        Guid tenantId,
+        IReadOnlyCollection<string> userIds,
+        CancellationToken cancellationToken = default)
+    {
+        await using var scope = scopeFactory.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
+        return await db.Users.AsNoTracking()
+            .Where(x => x.TenantId == tenantId && userIds.Contains(x.Id))
+            .ToDictionaryAsync(x => x.Id, x => x.DisplayName, cancellationToken);
     }
 
     private async Task<List<(VacationWorkflowUser User, HashSet<string> Roles)>> GetOperationalUsersAsync(Guid tenantId, CancellationToken cancellationToken)

@@ -27,6 +27,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<HumanResourcesScope> HumanResourcesScopes => Set<HumanResourcesScope>();
     public DbSet<VacationApprovalStep> VacationApprovalSteps => Set<VacationApprovalStep>();
     public DbSet<VacationApprovalStepActor> VacationApprovalStepActors => Set<VacationApprovalStepActor>();
+    public DbSet<PermissionRequest> PermissionRequests => Set<PermissionRequest>();
+    public DbSet<PermissionRequestDay> PermissionRequestDays => Set<PermissionRequestDay>();
+    public DbSet<PermissionApprovalStep> PermissionApprovalSteps => Set<PermissionApprovalStep>();
+    public DbSet<PermissionApprovalStepActor> PermissionApprovalStepActors => Set<PermissionApprovalStepActor>();
+    public DbSet<NotificationOutboxItem> NotificationOutbox => Set<NotificationOutboxItem>();
     public DbSet<TenantImportBatch> ImportBatches => Set<TenantImportBatch>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -307,6 +312,89 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.HasIndex(x => new { x.VacationApprovalStepId, x.UserId }).IsUnique();
             entity.HasIndex(x => x.UserId);
             entity.HasOne(x => x.VacationApprovalStep).WithMany(x => x.Actors).HasForeignKey(x => x.VacationApprovalStepId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PermissionRequest>(entity =>
+        {
+            entity.ToTable("permission_request", table =>
+            {
+                table.HasCheckConstraint("ck_permission_request_dates", "\"EndDate\" >= \"StartDate\"");
+                table.HasCheckConstraint("ck_permission_request_type", "\"PermissionType\" IN ('PAID', 'UNPAID')");
+                table.HasCheckConstraint("ck_permission_request_unit", "\"Unit\" IN ('DAYS', 'HOURS')");
+                table.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND \"StartDate\" = \"EndDate\")");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PermissionType).HasMaxLength(12);
+            entity.Property(x => x.Unit).HasMaxLength(12);
+            entity.Property(x => x.Reason).HasMaxLength(1000);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.RequestedByUserId).HasMaxLength(450);
+            entity.Property(x => x.DecisionComment).HasMaxLength(500);
+            entity.Property(x => x.DecidedByUserId).HasMaxLength(450);
+            entity.Property(x => x.CancelledByUserId).HasMaxLength(450);
+            entity.Property(x => x.CancellationReason).HasMaxLength(500);
+            entity.HasIndex(x => new { x.EmploymentId, x.Status });
+            entity.HasIndex(x => new { x.StartDate, x.EndDate });
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PermissionRequestDay>(entity =>
+        {
+            entity.ToTable("permission_request_day", table =>
+                table.HasCheckConstraint("ck_permission_request_day_minutes", "\"EffectiveMinutes\" >= 0"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.WorkScheduleName).HasMaxLength(160);
+            entity.Property(x => x.HolidayName).HasMaxLength(160);
+            entity.HasIndex(x => new { x.PermissionRequestId, x.Date }).IsUnique();
+            entity.HasOne(x => x.PermissionRequest).WithMany(x => x.Dates).HasForeignKey(x => x.PermissionRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PermissionApprovalStep>(entity =>
+        {
+            entity.ToTable("permission_approval_step", table =>
+            {
+                table.HasCheckConstraint("ck_permission_approval_step_sequence", "\"Sequence\" > 0");
+                table.HasCheckConstraint("ck_permission_approval_step_type", "\"Type\" IN ('APPROVER', 'HUMAN_RESOURCES')");
+                table.HasCheckConstraint("ck_permission_approval_step_status", "\"Status\" IN ('WAITING', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.Property(x => x.Type).HasMaxLength(24);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.DecidedByUserId).HasMaxLength(450);
+            entity.Property(x => x.DecisionComment).HasMaxLength(500);
+            entity.HasIndex(x => new { x.PermissionRequestId, x.Sequence }).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.Type });
+            entity.HasOne(x => x.PermissionRequest).WithMany(x => x.ApprovalSteps).HasForeignKey(x => x.PermissionRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<PermissionApprovalStepActor>(entity =>
+        {
+            entity.ToTable("permission_approval_step_actor");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.UserId).HasMaxLength(450);
+            entity.HasIndex(x => new { x.PermissionApprovalStepId, x.UserId }).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.PermissionApprovalStep).WithMany(x => x.Actors).HasForeignKey(x => x.PermissionApprovalStepId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<NotificationOutboxItem>(entity =>
+        {
+            entity.ToTable("notification_outbox", table =>
+            {
+                table.HasCheckConstraint("ck_notification_outbox_status", "\"Status\" IN ('PENDING', 'SENT', 'FAILED')");
+                table.HasCheckConstraint("ck_notification_outbox_attempts", "\"AttemptCount\" >= 0");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.EventKey).HasMaxLength(200);
+            entity.Property(x => x.EventType).HasMaxLength(40);
+            entity.Property(x => x.RequestType).HasMaxLength(20);
+            entity.Property(x => x.RecipientUserId).HasMaxLength(450);
+            entity.Property(x => x.Subject).HasMaxLength(255);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.LastError).HasMaxLength(1000);
+            entity.HasIndex(x => x.EventKey).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.NextAttemptAtUtc });
         });
 
         builder.Entity<TenantImportBatch>(entity =>

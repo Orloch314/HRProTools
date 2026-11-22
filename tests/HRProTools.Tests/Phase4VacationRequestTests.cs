@@ -178,6 +178,8 @@ public sealed class Phase4VacationRequestTests
         Assert.Equal(2, await verify.VacationMovements.CountAsync(x => x.OperationKey == $"reversal:consume:vacation-request:{requestId:N}"));
         Assert.Equal(1, await verify.VacationMovements.CountAsync(x => x.OperationKey == $"release:vacation-request:{rejectedId:N}"));
         Assert.Equal(VacationRequestStatuses.Rejected, (await verify.VacationRequests.SingleAsync(x => x.Id == rejectedId)).Status);
+        Assert.Equal(8, await verify.NotificationOutbox.CountAsync(x => x.RequestId == requestId));
+        Assert.Equal(3, await verify.NotificationOutbox.CountAsync(x => x.RequestId == rejectedId));
         var balance = await VacationLedgerQueries.GetEmploymentBalanceAsync(verify, ids.EmploymentId);
         Assert.Equal(0, balance.Reserved);
         Assert.Equal(8, balance.Consumed);
@@ -374,6 +376,192 @@ public sealed class Phase4VacationRequestTests
         Assert.Equal(2, await verify.VacationMovements.CountAsync(x => x.OperationKey == $"vacation-request:{requestId:N}"));
     }
 
+    [Fact]
+    public async Task PermissionDaysAndHoursUseScheduleHolidayAndBreakSnapshots()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var ids = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+
+        var days = await service.PreviewSelfAsync(PermissionRequestUnits.Days, Monday, Sunday, null, null);
+        Assert.Equal(5, days.RequestedDays);
+        Assert.Equal(5, days.Dates.Count(x => x.CountsAsPermissionDay));
+
+        var hours = await service.PreviewSelfAsync(PermissionRequestUnits.Hours, Monday, Monday, new(11, 0), new(14, 0));
+        Assert.Equal(120, hours.RequestedMinutes);
+        Assert.Equal(new TimeOnly(12, 0), Assert.Single(hours.Dates).BreakStart);
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PreviewSelfAsync(PermissionRequestUnits.Hours, Monday, Monday, new(7, 0), new(9, 0)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PreviewSelfAsync(PermissionRequestUnits.Hours, Monday, Monday, new(12, 0), new(13, 0)));
+        await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            service.PreviewSelfAsync(PermissionRequestUnits.Hours, Monday, Monday, new(10, 0), new(9, 0)));
+
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, PermissionRequestTypes.Unpaid, PermissionRequestUnits.Days,
+            Monday.AddDays(14), Monday.AddDays(18), null, null, "Trámite personal");
+        await using var db = fixture.CreateTenantDb();
+        var request = await db.PermissionRequests.Include(x => x.Dates).SingleAsync(x => x.Id == requestId);
+        Assert.Equal(PermissionRequestTypes.Unpaid, request.PermissionType);
+        Assert.Equal(5, request.RequestedDays);
+        Assert.All(request.Dates, x => Assert.Equal("Lunes a viernes", x.WorkScheduleName));
+        Assert.Equal(3, await db.VacationMovements.CountAsync());
+    }
+
+    [Fact]
+    public async Task PermissionWorkflowEnforcesRolesScopesIdempotencyAndCreatesNotifications()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, PermissionRequestTypes.Paid, PermissionRequestUnits.Hours,
+            Monday, Monday, new(9, 0), new(11, 0), "Consulta médica");
+
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+        fixture.AuthenticateAs(fixture.OtherDepartmentApproverUser, AppRoles.Approver);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee, AppRoles.Approver);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(requestId, "Conforme");
+        await service.ApproveAsync(requestId, "Reintento");
+        fixture.AuthenticateAs(fixture.OutOfScopeHumanResourcesUser, AppRoles.HumanResources);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.ApproveAsync(requestId, string.Empty));
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.ApproveAsync(requestId, "Aprobación final");
+        await service.ApproveAsync(requestId, "Reintento");
+
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(PermissionRequestStatuses.Approved, (await db.PermissionRequests.SingleAsync(x => x.Id == requestId)).Status);
+        Assert.Equal(2, await db.PermissionApprovalSteps.CountAsync(x => x.PermissionRequestId == requestId && x.Status == VacationApprovalStepStatuses.Approved));
+        Assert.Equal(4, await db.NotificationOutbox.CountAsync(x => x.RequestId == requestId));
+        Assert.Equal(3, await db.VacationMovements.CountAsync());
+    }
+
+    [Fact]
+    public async Task PermissionOverlapRejectsPermissionsAndVacationsInBothDirections()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var permissions = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+        var vacations = fixture.Scope.ServiceProvider.GetRequiredService<VacationRequestService>();
+        await permissions.CreateSelfAsync(Guid.NewGuid(), PermissionRequestTypes.Paid, PermissionRequestUnits.Days,
+            Monday, Monday, null, null, "Ausencia completa");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => permissions.CreateSelfAsync(Guid.NewGuid(),
+            PermissionRequestTypes.Paid, PermissionRequestUnits.Hours, Monday, Monday, new(10, 0), new(11, 0), "Solapado"));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => vacations.CreateSelfAsync(Guid.NewGuid(), Monday, Monday.AddDays(1)));
+
+        await vacations.CreateSelfAsync(Guid.NewGuid(), Monday.AddDays(14), Monday.AddDays(18));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => permissions.CreateSelfAsync(Guid.NewGuid(),
+            PermissionRequestTypes.Unpaid, PermissionRequestUnits.Days, Monday.AddDays(15), Monday.AddDays(16), null, null, "Solapado con vacaciones"));
+    }
+
+    [Fact]
+    public async Task PermissionCancellationPreservesDecisionsAndHonorsTenantSetting()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+        var workflow = fixture.Scope.ServiceProvider.GetRequiredService<VacationWorkflowService>();
+
+        var pendingId = Guid.NewGuid();
+        await service.CreateSelfAsync(pendingId, PermissionRequestTypes.Paid, PermissionRequestUnits.Days,
+            Monday, Monday, null, null, "Pendiente");
+        await service.CancelSelfAsync(pendingId, "Ya no es necesario");
+
+        var approvedId = Guid.NewGuid();
+        await service.CreateSelfAsync(approvedId, PermissionRequestTypes.Unpaid, PermissionRequestUnits.Hours,
+            Monday.AddDays(1), Monday.AddDays(1), new(9, 0), new(10, 0), "Aprobado");
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(approvedId, "Jefatura");
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.ApproveAsync(approvedId, "RR. HH.");
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+        await service.CancelSelfAsync(approvedId, "Cambio de planes");
+
+        fixture.AuthenticateAs(fixture.AdministratorUser, AppRoles.TenantAdministrator);
+        await workflow.SaveCancellationSettingAsync(false);
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+        var blockedId = Guid.NewGuid();
+        await service.CreateSelfAsync(blockedId, PermissionRequestTypes.Paid, PermissionRequestUnits.Hours,
+            Monday.AddDays(2), Monday.AddDays(2), new(9, 0), new(10, 0), "No cancelable");
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CancelSelfAsync(blockedId, string.Empty));
+
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(PermissionRequestStatuses.Cancelled, (await db.PermissionRequests.SingleAsync(x => x.Id == pendingId)).Status);
+        Assert.Equal(PermissionRequestStatuses.Cancelled, (await db.PermissionRequests.SingleAsync(x => x.Id == approvedId)).Status);
+        Assert.Equal(2, await db.PermissionApprovalSteps.CountAsync(x => x.PermissionRequestId == approvedId && x.Status == VacationApprovalStepStatuses.Approved));
+        Assert.Equal(PermissionRequestStatuses.Pending, (await db.PermissionRequests.SingleAsync(x => x.Id == blockedId)).Status);
+        Assert.Equal(4, await db.NotificationOutbox.CountAsync(x => x.RequestId == approvedId && x.EventType == "CANCELLED"));
+    }
+
+    [Fact]
+    public async Task PermissionRejectionsAtEitherLevelAreFinalAndNotifyEmployee()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+
+        var managerRejectedId = Guid.NewGuid();
+        await service.CreateSelfAsync(managerRejectedId, PermissionRequestTypes.Paid, PermissionRequestUnits.Hours,
+            Monday, Monday, new(9, 0), new(10, 0), "Primera solicitud");
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.RejectAsync(managerRejectedId, "Rechazo de jefatura");
+
+        fixture.AuthenticateAs(fixture.User, AppRoles.Employee);
+        var hrRejectedId = Guid.NewGuid();
+        await service.CreateSelfAsync(hrRejectedId, PermissionRequestTypes.Unpaid, PermissionRequestUnits.Hours,
+            Monday.AddDays(1), Monday.AddDays(1), new(9, 0), new(10, 0), "Segunda solicitud");
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        await service.ApproveAsync(hrRejectedId, "Conforme");
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.RejectAsync(hrRejectedId, "Rechazo de RR. HH.");
+
+        await using var db = fixture.CreateTenantDb();
+        Assert.Equal(PermissionRequestStatuses.Rejected, (await db.PermissionRequests.SingleAsync(x => x.Id == managerRejectedId)).Status);
+        Assert.Equal(PermissionRequestStatuses.Rejected, (await db.PermissionRequests.SingleAsync(x => x.Id == hrRejectedId)).Status);
+        Assert.Equal(1, await db.NotificationOutbox.CountAsync(x => x.RequestId == managerRejectedId && x.EventType == "REJECTED" && x.RecipientUserId == fixture.User.Id));
+        Assert.Equal(1, await db.NotificationOutbox.CountAsync(x => x.RequestId == hrRejectedId && x.EventType == "REJECTED" && x.RecipientUserId == fixture.User.Id));
+    }
+
+    [Fact]
+    public async Task OutboxFailureDoesNotLoseRequestAndRetryDoesNotDuplicateEvents()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<PermissionRequestService>();
+        var worker = fixture.Scope.ServiceProvider.GetRequiredService<NotificationOutboxHostedService>();
+        var transport = fixture.Scope.ServiceProvider.GetRequiredService<FailingNotificationTransport>();
+        var requestId = Guid.NewGuid();
+        await service.CreateSelfAsync(requestId, PermissionRequestTypes.Paid, PermissionRequestUnits.Hours,
+            Monday, Monday, new(9, 0), new(10, 0), "Notificación");
+
+        await worker.ProcessTenantOnceAsync(fixture.Tenant.Id, fixture.SchemaName);
+        await using (var failed = fixture.CreateTenantDb())
+        {
+            Assert.Equal(PermissionRequestStatuses.Pending, (await failed.PermissionRequests.SingleAsync(x => x.Id == requestId)).Status);
+            Assert.Equal(2, await failed.NotificationOutbox.CountAsync(x => x.RequestId == requestId));
+            Assert.All(await failed.NotificationOutbox.Where(x => x.RequestId == requestId).ToListAsync(), x =>
+            {
+                Assert.Equal(NotificationOutboxStatuses.Pending, x.Status);
+                Assert.Equal(1, x.AttemptCount);
+                Assert.Contains("SMTP", x.LastError);
+                x.NextAttemptAtUtc = null;
+            });
+            await failed.SaveChangesAsync();
+        }
+
+        transport.Fail = false;
+        await worker.ProcessTenantOnceAsync(fixture.Tenant.Id, fixture.SchemaName);
+        await using var sent = fixture.CreateTenantDb();
+        Assert.Equal(2, await sent.NotificationOutbox.CountAsync(x => x.RequestId == requestId));
+        Assert.Equal(2, await sent.NotificationOutbox.CountAsync(x => x.RequestId == requestId && x.Status == NotificationOutboxStatuses.Sent));
+        Assert.Equal(2, transport.Recipients.Count);
+    }
+
     private static string Connection() => Environment.GetEnvironmentVariable("HRPROTOOLS_TEST_CONNECTION")
         ?? throw new InvalidOperationException("Defina HRPROTOOLS_TEST_CONNECTION.");
 
@@ -498,6 +686,12 @@ public sealed class Phase4VacationRequestTests
             services.AddSingleton<TenantDbContextFactory>();
             services.AddScoped<VacationWorkflowService>();
             services.AddScoped<VacationRequestService>();
+            services.AddScoped<PermissionRequestService>();
+            services.AddScoped<NotificationOutboxService>();
+            services.AddSingleton<FailingNotificationTransport>();
+            services.AddSingleton<INotificationEmailTransport>(sp => sp.GetRequiredService<FailingNotificationTransport>());
+            services.AddSingleton<NotificationOutboxHostedService>();
+            services.AddSingleton<NotificationOutboxHostedService>();
             var provider = services.BuildServiceProvider();
             var scope = provider.CreateAsyncScope();
             var global = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
@@ -531,7 +725,7 @@ public sealed class Phase4VacationRequestTests
             var employment = new Employment { EmployeeNumber = "99", Person = person, Company = company, StartDate = new(2020, 1, 1) };
             var department = new Department { Company = company, Code = "DEP", Name = "Operaciones" };
             var position = new Position { Company = company, Code = "POS", Name = "Analista" };
-            var schedule = new WorkSchedule { Name = "Lunes a viernes", StartTime = new(8, 0), EndTime = new(17, 0) };
+            var schedule = new WorkSchedule { Name = "Lunes a viernes", StartTime = new(8, 0), EndTime = new(17, 0), BreakStart = new(12, 0), BreakEnd = new(13, 0) };
             var first = new VacationPeriod { Employment = employment, ReferenceStart = new(2024, 1, 1), ReferenceEnd = new(2024, 12, 31), AccruedOn = new(2025, 1, 1), UseBy = new(2025, 7, 1), LegalDays = 12 };
             var second = new VacationPeriod { Employment = employment, ReferenceStart = new(2025, 1, 1), ReferenceEnd = new(2025, 12, 31), AccruedOn = new(2026, 1, 1), UseBy = new(2026, 7, 1), LegalDays = 12 };
             db.AddRange(company, otherCompany, department, position, person, employment, schedule, first, second);
@@ -596,6 +790,19 @@ public sealed class Phase4VacationRequestTests
         public void Set(string userId, params string[] roles) => state = new(new ClaimsPrincipal(new ClaimsIdentity(
             new[] { new Claim(ClaimTypes.NameIdentifier, userId) }.Concat(roles.Select(x => new Claim(ClaimTypes.Role, x))), "Test")));
         public override Task<AuthenticationState> GetAuthenticationStateAsync() => Task.FromResult(state);
+    }
+
+    private sealed class FailingNotificationTransport : INotificationEmailTransport
+    {
+        public bool Fail { get; set; } = true;
+        public List<string> Recipients { get; } = [];
+        public Task<bool> IsConfiguredAsync(CancellationToken cancellationToken = default) => Task.FromResult(true);
+        public Task SendAsync(string recipient, string subject, string html, CancellationToken cancellationToken = default)
+        {
+            if (Fail) throw new InvalidOperationException("SMTP de prueba no disponible.");
+            Recipients.Add(recipient);
+            return Task.CompletedTask;
+        }
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)

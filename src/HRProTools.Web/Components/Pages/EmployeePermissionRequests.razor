@@ -1,0 +1,155 @@
+@page "/empleado/permisos"
+@attribute [Authorize(Policy = AppPolicies.EmployeeSelfService)]
+@inject PermissionRequestService Requests
+
+<PageTitle>Mis permisos - HR ProTools</PageTitle>
+
+<div class="page-heading">
+    <div><span class="eyebrow">Autoservicio</span><h1>Mis permisos</h1><p>Solicite permisos con o sin goce, por días o por horas.</p></div>
+    <a class="btn-secondary" href="empleado">Volver a mis datos</a>
+</div>
+
+@if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
+
+<section class="panel">
+    <div class="panel-title"><h2>Nueva solicitud</h2><span>@(unit == PermissionRequestUnits.Days ? "Días" : "Horas")</span></div>
+    <div class="form-grid three-columns">
+        <label><span>Clasificación</span><select @bind="permissionType"><option value="PAID">Con goce de salario</option><option value="UNPAID">Sin goce de salario</option></select></label>
+        <label><span>Unidad</span><select @bind="unit" @bind:after="UnitChanged"><option value="DAYS">Por días</option><option value="HOURS">Por horas</option></select></label>
+        <label><span>Fecha inicial</span><InputDate @bind-Value="startDate" /></label>
+        @if (unit == PermissionRequestUnits.Days)
+        {
+            <label><span>Fecha final</span><InputDate @bind-Value="endDate" /></label>
+        }
+        else
+        {
+            <label><span>Hora inicial</span><input type="time" @bind="startTime" /></label>
+            <label><span>Hora final</span><input type="time" @bind="endTime" /></label>
+        }
+        <label class="span-full"><span>Motivo</span><textarea @bind="reason" maxlength="1000"></textarea></label>
+    </div>
+    <div class="button-row"><button class="btn-secondary" @onclick="PreviewAsync">Calcular</button><button class="btn-primary" disabled="@(preview is null)" @onclick="SubmitAsync">Presentar solicitud</button></div>
+    @if (preview is not null)
+    {
+        <div class="detail-grid compact">
+            <div><span>Cantidad</span><strong>@Quantity(preview)</strong></div>
+            <div><span>Intervalo</span><strong>@Interval(preview)</strong></div>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Fecha</th><th>Jornada aplicada</th><th>Condición</th><th>Duración</th></tr></thead><tbody>
+        @foreach (var day in preview.Dates)
+        {
+            <tr><td>@day.Date.ToString("dd/MM/yyyy")</td><td>@day.WorkScheduleName<small>@day.WorkStart.ToString("HH:mm")–@day.WorkEnd.ToString("HH:mm")</small></td><td>@DayCondition(day)</td><td>@FormatMinutes(day.EffectiveMinutes)</td></tr>
+        }
+        </tbody></table></div>
+    }
+</section>
+
+<section class="panel">
+    <div class="panel-title"><h2>Historial de permisos</h2><span>@items.Count</span></div>
+    <div class="table-wrap"><table><thead><tr><th>Tipo</th><th>Intervalo</th><th>Cantidad</th><th>Estado</th><th>Nivel</th><th></th></tr></thead><tbody>
+    @if (items.Count == 0) { <tr><td colspan="6" class="empty">Todavía no existen solicitudes de permiso.</td></tr> }
+    @foreach (var item in items)
+    {
+        <tr><td>@TypeText(item.PermissionType)<small>@item.Reason</small></td><td>@ItemInterval(item)</td><td>@ItemQuantity(item)</td><td>@StatusText(item.Status)</td><td>@(string.IsNullOrWhiteSpace(item.PendingLevel) ? "—" : item.PendingLevel)</td><td><button class="link-button" @onclick="() => selected = item">Detalle</button></td></tr>
+    }
+    </tbody></table></div>
+</section>
+
+@if (selected is not null)
+{
+    <section class="panel editor-accent">
+        <div class="panel-title"><div><h2>Detalle del circuito</h2><p>@selected.Reason</p></div><button class="link-button" @onclick="() => selected = null">Cerrar</button></div>
+        <div class="table-wrap"><table><thead><tr><th>Orden</th><th>Nivel</th><th>Estado</th><th>Decidido por</th><th>Comentario</th></tr></thead><tbody>
+        @foreach (var step in selected.History)
+        {
+            <tr><td>@step.Sequence</td><td>@step.Level</td><td>@StepText(step.Status)</td><td>@(string.IsNullOrWhiteSpace(step.DecidedBy) ? "—" : step.DecidedBy)</td><td>@(string.IsNullOrWhiteSpace(step.Comment) ? "—" : step.Comment)</td></tr>
+        }
+        </tbody></table></div>
+        @if (selected.CanCancel)
+        {
+            <label><span>Motivo de cancelación (opcional)</span><textarea @bind="cancellationReason" maxlength="500"></textarea></label>
+            <button class="btn-danger" @onclick="CancelAsync">Cancelar solicitud</button>
+        }
+    </section>
+}
+
+@code {
+    private readonly DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+    private DateOnly startDate;
+    private DateOnly endDate;
+    private TimeOnly startTime = new(8, 0);
+    private TimeOnly endTime = new(9, 0);
+    private string permissionType = PermissionRequestTypes.Paid;
+    private string unit = PermissionRequestUnits.Days;
+    private string reason = string.Empty;
+    private string cancellationReason = string.Empty;
+    private string message = string.Empty;
+    private bool hasError;
+    private PermissionIntervalCalculation? preview;
+    private List<PermissionRequestListItem> items = [];
+    private PermissionRequestListItem? selected;
+
+    protected override async Task OnInitializedAsync()
+    {
+        startDate = today;
+        endDate = today;
+        await LoadAsync();
+    }
+
+    private void UnitChanged()
+    {
+        preview = null;
+        if (unit == PermissionRequestUnits.Hours) endDate = startDate;
+    }
+
+    private async Task PreviewAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            if (unit == PermissionRequestUnits.Hours) endDate = startDate;
+            preview = await Requests.PreviewSelfAsync(unit, startDate, endDate,
+                unit == PermissionRequestUnits.Hours ? startTime : null,
+                unit == PermissionRequestUnits.Hours ? endTime : null);
+            message = $"Cálculo correcto: {Quantity(preview)}.";
+        });
+    }
+
+    private async Task SubmitAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await Requests.CreateSelfAsync(Guid.NewGuid(), permissionType, unit, startDate, endDate,
+                unit == PermissionRequestUnits.Hours ? startTime : null,
+                unit == PermissionRequestUnits.Hours ? endTime : null,
+                reason);
+            preview = null;
+            reason = string.Empty;
+            message = "Solicitud presentada al primer nivel de aprobación.";
+            await LoadAsync();
+        });
+    }
+
+    private async Task CancelAsync()
+    {
+        await ExecuteAsync(async () =>
+        {
+            await Requests.CancelSelfAsync(selected!.Id, cancellationReason);
+            selected = null;
+            cancellationReason = string.Empty;
+            message = "Solicitud cancelada. El historial de decisiones fue conservado.";
+            await LoadAsync();
+        });
+    }
+
+    private async Task LoadAsync() => items = await Requests.GetSelfRequestsAsync();
+    private async Task ExecuteAsync(Func<Task> action) { try { hasError = false; await action(); } catch (Exception ex) { preview = null; hasError = true; message = ex.Message; } }
+    private static string Quantity(PermissionIntervalCalculation value) => value.Unit == PermissionRequestUnits.Hours ? FormatMinutes(value.RequestedMinutes) : $"{value.RequestedDays} día(s)";
+    private static string Interval(PermissionIntervalCalculation value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
+    private static string ItemQuantity(PermissionRequestListItem value) => value.Unit == PermissionRequestUnits.Hours ? FormatMinutes(value.RequestedMinutes) : $"{value.RequestedDays} día(s)";
+    private static string ItemInterval(PermissionRequestListItem value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
+    private static string FormatMinutes(int minutes) => $"{minutes / 60} h {minutes % 60:D2} min";
+    private static string DayCondition(PermissionDateCalculation day) => day.IsHoliday ? $"Feriado: {day.HolidayName}" : day.IsScheduledWorkday ? "Laboral" : "Descanso";
+    private static string TypeText(string value) => value == PermissionRequestTypes.Paid ? "Con goce" : "Sin goce";
+    private static string StatusText(string value) => value switch { PermissionRequestStatuses.Pending => "Pendiente", PermissionRequestStatuses.Approved => "Aprobada", PermissionRequestStatuses.Rejected => "Rechazada", PermissionRequestStatuses.Cancelled => "Cancelada", _ => value };
+    private static string StepText(string value) => value switch { VacationApprovalStepStatuses.Waiting => "En espera", VacationApprovalStepStatuses.Pending => "Pendiente", VacationApprovalStepStatuses.Approved => "Aprobado", VacationApprovalStepStatuses.Rejected => "Rechazado", VacationApprovalStepStatuses.Cancelled => "Cancelado", _ => value };
+}
