@@ -441,6 +441,128 @@ public sealed class PermissionApprovalStepActor
     public string UserId { get; set; } = string.Empty;
 }
 
+public static class AbsenceTypes
+{
+    public const string Medical = "MEDICAL";
+    public const string Unjustified = "UNJUSTIFIED";
+    public const string OtherJustified = "OTHER_JUSTIFIED";
+}
+
+public static class AbsenceStatuses
+{
+    public const string Declared = "DECLARED";
+    public const string PendingReview = "PENDING_REVIEW";
+    public const string Justified = "JUSTIFIED";
+    public const string Unjustified = "UNJUSTIFIED";
+    public const string Cancelled = "CANCELLED";
+}
+
+public sealed class Absence
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public Guid CompanyId { get; set; }
+    public Company Company { get; set; } = null!;
+    public Guid DepartmentId { get; set; }
+    public Department Department { get; set; } = null!;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public int AffectedWorkdays { get; set; }
+    public string DeclaredType { get; set; } = AbsenceTypes.OtherJustified;
+    public string? FinalClassification { get; set; }
+    public string Status { get; set; } = AbsenceStatuses.Declared;
+    public string Reason { get; set; } = string.Empty;
+    public string RegisteredByUserId { get; set; } = string.Empty;
+    public string RegisteredByRole { get; set; } = string.Empty;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public string? ResolvedByUserId { get; set; }
+    public DateTimeOffset? ResolvedAtUtc { get; set; }
+    public string ResolutionComment { get; set; } = string.Empty;
+    public string? CancelledByUserId { get; set; }
+    public DateTimeOffset? CancelledAtUtc { get; set; }
+    public string CancellationReason { get; set; } = string.Empty;
+    public List<AbsenceDay> Dates { get; set; } = [];
+    public List<AbsenceHistory> History { get; set; } = [];
+    public List<AbsenceDocument> Documents { get; set; } = [];
+}
+
+public sealed class AbsenceDay
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AbsenceId { get; set; }
+    public Absence Absence { get; set; } = null!;
+    public DateOnly Date { get; set; }
+    public Guid WorkScheduleId { get; set; }
+    public string WorkScheduleName { get; set; } = string.Empty;
+    public bool IsScheduledWorkday { get; set; }
+    public bool IsHoliday { get; set; }
+    public string HolidayName { get; set; } = string.Empty;
+    public bool CountsAsAbsenceDay { get; set; }
+}
+
+public sealed class AbsenceHistory
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AbsenceId { get; set; }
+    public Absence Absence { get; set; } = null!;
+    public string PreviousStatus { get; set; } = string.Empty;
+    public string NewStatus { get; set; } = string.Empty;
+    public string? PreviousClassification { get; set; }
+    public string? NewClassification { get; set; }
+    public string ChangedByUserId { get; set; } = string.Empty;
+    public string Comment { get; set; } = string.Empty;
+    public DateTimeOffset ChangedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class AbsenceDocument
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid AbsenceId { get; set; }
+    public Absence Absence { get; set; } = null!;
+    public string OriginalFileName { get; set; } = string.Empty;
+    public string ContentType { get; set; } = string.Empty;
+    public long Size { get; set; }
+    public string Sha256 { get; set; } = string.Empty;
+    public byte[] Content { get; set; } = [];
+    public string AntivirusStatus { get; set; } = string.Empty;
+    public DateTimeOffset? ScannedAtUtc { get; set; }
+    public string UploadedByUserId { get; set; } = string.Empty;
+    public DateTimeOffset UploadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public static class OperationalAlertTypes
+{
+    public const string VacationSecondPendingRisk = "VACATION_SECOND_PENDING_RISK";
+    public const string AbsencePendingReview = "ABSENCE_PENDING_REVIEW";
+    public const string AbsenceUnjustified = "ABSENCE_UNJUSTIFIED";
+    public const string MedicalDocumentPending = "MEDICAL_DOCUMENT_PENDING";
+}
+
+public static class OperationalAlertStatuses
+{
+    public const string Open = "OPEN";
+    public const string Attended = "ATTENDED";
+}
+
+public sealed class OperationalAlert
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public string AlertKey { get; set; } = string.Empty;
+    public string Type { get; set; } = string.Empty;
+    public Guid CompanyId { get; set; }
+    public Guid? DepartmentId { get; set; }
+    public Guid EmploymentId { get; set; }
+    public Guid? AbsenceId { get; set; }
+    public Guid? VacationPeriodId { get; set; }
+    public string Title { get; set; } = string.Empty;
+    public string Message { get; set; } = string.Empty;
+    public string Status { get; set; } = OperationalAlertStatuses.Open;
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+    public string? AttendedByUserId { get; set; }
+    public DateTimeOffset? AttendedAtUtc { get; set; }
+}
+
 public static class NotificationOutboxStatuses
 {
     public const string Pending = "PENDING";

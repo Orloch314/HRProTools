@@ -124,7 +124,7 @@
 - Un permiso reutiliza el circuito sin crear movimientos en el ledger de vacaciones.
 - Las notificaciones persisten aunque SMTP falle y una misma transicion no duplica eventos.
 
-## Fase 5 - Ausencias, alertas, reportes Excel y despliegue
+## Fase 5 - Ausencias, alertas, dashboard, reporte Excel y cierre funcional
 
 ### Funcionalidades
 
@@ -134,15 +134,15 @@
 4. Dashboard coherente con el mockup, sin metricas no respaldadas por datos.
 5. Un unico reporte Excel inicial con resumen de permisos concedidos, rechazados, pendientes y cancelados.
 6. Filtros del reporte por empresa/departamento/periodo segun autorizacion.
-7. Publicacion nativa en Ubuntu 26.04 LTS con .NET 10, PostgreSQL 18, Nginx y systemd.
-8. Health check, logs, backup/restauracion de DB + claves Data Protection + archivos.
-9. Guia de actualizacion y rollback; sin Docker.
+7. Dashboard por rol con metricas reales y alcances de empresa/departamento.
+8. Verificacion final de regresion, migraciones, aislamiento y health check local.
+9. Actualizacion de documentacion, commit y push del cierre funcional del MVP.
 
 ### Dependencias
 
 - Flujos y permisos aceptados en Fase 4.
 - Definicion funcional de tipos de ausencia y alertas.
-- Infraestructura Ubuntu, DNS/HTTPS, SMTP, PostgreSQL y ClamAV.
+- PostgreSQL y ClamAV locales para pruebas de persistencia y seguridad.
 - Plantilla/columnas de reportes aprobadas.
 
 ### Criterios minimos de aceptacion
@@ -150,10 +150,15 @@
 - Ausencias y adjuntos se registran sin alterar historia del funcionario.
 - El reporte Excel de permisos refleja filtros y no expone datos de empresas fuera del alcance.
 - Alertas se generan a partir de reglas verificables, sin duplicados visibles.
-- Despliegue reinicia automaticamente, responde `/health` y soporta conexion interactiva Blazor tras Nginx.
-- PostgreSQL no queda expuesto publicamente y no hay secretos en repositorio.
-- Se realiza una prueba documentada de backup y restauracion coherente, incluyendo claves Data Protection.
-- La aplicacion funciona sin Docker y conserva datos/archivos al cambiar de release.
+- El dashboard respeta roles multiples sin ampliar alcances ni exponer salario o documentos medicos.
+- Compilacion, pruebas esenciales, modelos EF y `/health` local finalizan correctamente.
+- No hay secretos, documentos medicos reales ni datos personales de prueba incorporados al repositorio.
+
+### Estado de cierre
+
+- La implementacion funcional de la Fase 5 esta completada en el entorno local.
+- El deployment fue excluido expresamente porque no existe aun el VPS de HR ProTools. Ubuntu, Nginx, systemd, DNS, HTTPS, backups remotos, actualizacion y rollback quedan para una actividad futura separada.
+- El MVP requiere todavia aceptacion manual y publicacion futura; no se considera desplegado en produccion.
 
 ## Elementos expresamente posteriores al MVP
 

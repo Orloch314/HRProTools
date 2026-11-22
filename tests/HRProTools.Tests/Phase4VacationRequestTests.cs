@@ -8,6 +8,9 @@ using Microsoft.AspNetCore.Components.Authorization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.FileProviders;
+using Microsoft.AspNetCore.Hosting;
+using ClosedXML.Excel;
 using Npgsql;
 
 namespace HRProTools.Tests;
@@ -567,6 +570,92 @@ public sealed class Phase4VacationRequestTests
 
     private static string Schema() => "hr_t_" + Guid.NewGuid().ToString("N");
 
+    [Fact]
+    public async Task Phase5EmployeeDeclarationHrReviewAndScopeAreEnforced()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var seeded = await fixture.SeedAsync();
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<AbsenceService>();
+        var id = await service.CreateSelfAsync(Monday, Monday.AddDays(1), AbsenceTypes.OtherJustified, "Situacion personal");
+        Assert.Single(await service.GetSelfAsync());
+
+        fixture.AuthenticateAs(fixture.OtherDepartmentApproverUser, AppRoles.Approver);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.CreateOperationalAsync(seeded.EmploymentId, Monday.AddDays(7), Monday.AddDays(7), AbsenceTypes.Unjustified, "No se presento", false));
+
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        await service.ReviewAsync(id, AbsenceTypes.OtherJustified, AbsenceStatuses.Justified, "Antecedente revisado");
+        var reviewed = Assert.Single(await service.GetOperationalAsync());
+        Assert.Equal(AbsenceStatuses.Justified, reviewed.Status);
+        Assert.Equal(2, reviewed.History.Count);
+        await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateOperationalAsync(seeded.EmploymentId, Monday, Monday, AbsenceTypes.Medical, "Duplicada", true));
+    }
+
+    [Fact]
+    public async Task Phase5ApproverCanRegisterOnlyAuthorizedEmployeeAndHrControlsDocuments()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var seeded = await fixture.SeedAsync();
+        fixture.AuthenticateAs(fixture.ApproverUser, AppRoles.Approver);
+        var service = fixture.Scope.ServiceProvider.GetRequiredService<AbsenceService>();
+        var id = await service.CreateOperationalAsync(seeded.EmploymentId, Monday, Monday, AbsenceTypes.Medical, "Reposo informado", false);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => service.UploadDocumentAsync(id, "reposo.pdf", "application/pdf", "%PDF-1.4\nprueba"u8.ToArray()));
+
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources);
+        var document = await service.UploadDocumentAsync(id, "reposo.pdf", "application/pdf", "%PDF-1.4\nprueba"u8.ToArray());
+        Assert.True(document.CanDownload);
+        Assert.Equal(FileScanStatuses.Clean, document.AntivirusStatus);
+        Assert.Throws<InvalidOperationException>(() => AbsenceDocumentValidator.Validate("mal.pdf", "application/pdf", "ejecutable"u8.ToArray()));
+        Assert.Throws<InvalidOperationException>(() => AbsenceDocumentValidator.Validate("grande.pdf", "application/pdf", new byte[AbsenceDocumentValidator.MaxSize + 1]));
+    }
+
+    [Fact]
+    public async Task Phase5AlertsUseSecondPendingRiskAndAreIdempotent()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var seeded = await fixture.SeedAsync();
+        await using var db = fixture.CreateTenantDb();
+        var today = ParaguayVacationRules.ParaguayToday();
+        var next = new VacationPeriod { EmploymentId = seeded.EmploymentId, ReferenceStart = new(2026, 1, 1), ReferenceEnd = new(2026, 6, 30), AccruedOn = new(2026, 7, 1), UseBy = today.AddDays(30), LegalDays = 12 };
+        db.VacationPeriods.Add(next);
+        db.VacationMovements.Add(new VacationMovement { VacationPeriod = next, Type = VacationMovementTypes.Credit, LegalDays = 12, OperationKey = "phase5-alert-credit" });
+        await db.SaveChangesAsync();
+        var first = await OperationalAlertService.GenerateAsync(db, today);
+        var second = await OperationalAlertService.GenerateAsync(db, today);
+        Assert.True(first > 0);
+        Assert.Equal(0, second);
+        Assert.Single(await db.OperationalAlerts.Where(x => x.Type == OperationalAlertTypes.VacationSecondPendingRisk).ToListAsync());
+    }
+
+    [Fact]
+    public async Task Phase5PermissionReportRespectsScopeAndReopensWithFilters()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        var seeded = await fixture.SeedAsync();
+        await using var db = fixture.CreateTenantDb();
+        var department = await db.EmploymentAssignments.Where(x => x.EmploymentId == seeded.EmploymentId && x.ValidTo == null).Select(x => x.DepartmentId).SingleAsync();
+        db.PermissionRequests.Add(new PermissionRequest { EmploymentId = seeded.EmploymentId, CompanyId = seeded.CompanyId, DepartmentId = department, PermissionType = PermissionRequestTypes.Paid, Unit = PermissionRequestUnits.Days, StartDate = Monday, EndDate = Monday, RequestedDays = 1, Status = PermissionRequestStatuses.Approved, RequestedByUserId = fixture.User.Id, DecidedAtUtc = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+        var bytes = await PermissionReportService.GenerateAsync(db, fixture.HumanResourcesUser.Id, new(seeded.CompanyId, department, Monday, Monday, PermissionRequestStatuses.Approved));
+        using var workbook = new XLWorkbook(new MemoryStream(bytes));
+        var sheet = workbook.Worksheet("Permisos");
+        Assert.Equal("Empresa", sheet.Cell("A4").GetString());
+        Assert.Equal("Aprobado", sheet.Cell("L5").GetString());
+        Assert.True(sheet.Table("PermisosTable").ShowAutoFilter);
+        await Assert.ThrowsAsync<UnauthorizedAccessException>(() => PermissionReportService.GenerateAsync(db, fixture.OutOfScopeHumanResourcesUser.Id, new(seeded.CompanyId, null, null, null, null)));
+    }
+
+    [Fact]
+    public async Task Phase5DashboardUsesRealMetricsAndMultipleRolesDoNotBroadenHrScope()
+    {
+        await using var fixture = await RequestServiceFixture.CreateAsync();
+        await fixture.SeedAsync();
+        fixture.AuthenticateAs(fixture.HumanResourcesUser, AppRoles.HumanResources, AppRoles.TenantAdministrator);
+        var dashboard = await fixture.Scope.ServiceProvider.GetRequiredService<RoleDashboardService>().GetAsync();
+        Assert.Equal("Dashboard RR. HH.", dashboard.Title);
+        Assert.Equal(1, dashboard.Metrics.Single(x => x.Label == "Funcionarios activos").Value);
+        Assert.DoesNotContain(dashboard.Metrics, x => x.Label.Contains("salario", StringComparison.OrdinalIgnoreCase));
+    }
+
     private sealed class TenantSchemaFixture : IAsyncDisposable
     {
         public required string SchemaName { get; init; }
@@ -687,6 +776,12 @@ public sealed class Phase4VacationRequestTests
             services.AddScoped<VacationWorkflowService>();
             services.AddScoped<VacationRequestService>();
             services.AddScoped<PermissionRequestService>();
+            services.AddScoped<AbsenceService>();
+            services.AddScoped<OperationalAlertService>();
+            services.AddScoped<RoleDashboardService>();
+            services.AddScoped<PermissionReportService>();
+            services.AddSingleton<IFileSecurityScanner, CleanFileScanner>();
+            services.AddSingleton<IWebHostEnvironment>(new TestWebHostEnvironment());
             services.AddScoped<NotificationOutboxService>();
             services.AddSingleton<FailingNotificationTransport>();
             services.AddSingleton<INotificationEmailTransport>(sp => sp.GetRequiredService<FailingNotificationTransport>());
@@ -803,6 +898,22 @@ public sealed class Phase4VacationRequestTests
             Recipients.Add(recipient);
             return Task.CompletedTask;
         }
+    }
+
+    private sealed class CleanFileScanner : IFileSecurityScanner
+    {
+        public Task<FileScanResult> ScanAsync(ReadOnlyMemory<byte> content, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new FileScanResult(FileScanStatuses.Clean, DateTimeOffset.UtcNow, true));
+    }
+
+    private sealed class TestWebHostEnvironment : IWebHostEnvironment
+    {
+        public string ApplicationName { get; set; } = "HRProTools.Tests";
+        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
+        public string WebRootPath { get; set; } = string.Empty;
+        public string EnvironmentName { get; set; } = "Development";
+        public string ContentRootPath { get; set; } = string.Empty;
+        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
     }
 
     private static async Task ExecuteAsync(NpgsqlConnection connection, string sql)

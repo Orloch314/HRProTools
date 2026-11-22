@@ -1,0 +1,27 @@
+@page "/empleado/ausencias"
+@attribute [Authorize(Policy = AppPolicies.EmployeeSelfService)]
+@inject AbsenceService Absences
+
+<PageTitle>Mis ausencias - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Autoservicio</span><h1>Mis ausencias</h1><p>Declare una ausencia. Recursos Humanos revisara y resolvera su clasificacion definitiva.</p></div></div>
+@if(!string.IsNullOrWhiteSpace(message)){<div class="notice @(error?"notice-error":"notice-success")">@message</div>}
+<section class="panel editor-accent"><h2>Declarar ausencia</h2><div class="form-grid">
+    <label><span>Fecha inicial</span><input type="date" @bind="start" /></label>
+    <label><span>Fecha final</span><input type="date" @bind="end" /></label>
+    <label><span>Tipo declarado</span><select @bind="type"><option value="MEDICAL">Ausencia medica</option><option value="UNJUSTIFIED">Ausencia injustificada</option><option value="OTHER_JUSTIFIED">Otra ausencia justificada</option></select></label>
+    <label><span>Motivo o comentario</span><textarea @bind="reason"></textarea></label>
+</div><p class="field-help">La declaracion no valida automaticamente la justificacion. Los documentos justificativos los carga RR. HH.</p><button class="btn-primary" @onclick="CreateAsync">Registrar declaracion</button></section>
+<section class="panel"><div class="panel-title"><h2>Historial propio</h2><span>@items.Count</span></div><div class="table-wrap"><table><thead><tr><th>Fechas</th><th>Dias laborales</th><th>Tipo declarado</th><th>Clasificacion final</th><th>Estado</th></tr></thead><tbody>
+@if(items.Count==0){<tr><td colspan="5" class="empty">No existen ausencias registradas.</td></tr>}
+@foreach(var item in items){<tr><td>@item.StartDate.ToString("dd/MM/yyyy") – @item.EndDate.ToString("dd/MM/yyyy")</td><td>@item.AffectedWorkdays</td><td>@TypeText(item.DeclaredType)</td><td>@(item.FinalClassification is null?"Pendiente":TypeText(item.FinalClassification))</td><td><span class="status @StatusClass(item.Status)">@StatusText(item.Status)</span></td></tr>}
+</tbody></table></div></section>
+
+@code {
+    private DateOnly start = ParaguayVacationRules.ParaguayToday(); private DateOnly end = ParaguayVacationRules.ParaguayToday();
+    private string type=AbsenceTypes.OtherJustified, reason="", message=""; private bool error; private List<AbsenceView> items=[];
+    protected override async Task OnInitializedAsync()=>items=await Absences.GetSelfAsync();
+    private async Task CreateAsync(){try{await Absences.CreateSelfAsync(start,end,type,reason);reason="";items=await Absences.GetSelfAsync();error=false;message="Ausencia declarada y pendiente de revision.";}catch(Exception ex){error=true;message=ex.Message;}}
+    private static string TypeText(string v)=>v switch{AbsenceTypes.Medical=>"Medica",AbsenceTypes.Unjustified=>"Injustificada",AbsenceTypes.OtherJustified=>"Otra justificada",_=>v};
+    private static string StatusText(string v)=>v switch{AbsenceStatuses.Declared=>"Declarada",AbsenceStatuses.PendingReview=>"Pendiente de revision",AbsenceStatuses.Justified=>"Justificada",AbsenceStatuses.Unjustified=>"Injustificada",AbsenceStatuses.Cancelled=>"Cancelada",_=>v};
+    private static string StatusClass(string v)=>v is AbsenceStatuses.Declared or AbsenceStatuses.PendingReview?"pending":v==AbsenceStatuses.Justified?"active":"inactive";
+}

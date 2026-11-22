@@ -1,8 +1,52 @@
 # Estado del proyecto HR ProTools
 
 **Fecha:** 22/11/2026
-**Fase actual:** Fase 4/5 - solicitudes de vacaciones, permisos y notificaciones
-**Estado:** Fase 4 completada y verificada; no se inicio la Fase 5.
+**Fase actual:** Fase 5/5 - cierre funcional del MVP
+**Estado:** MVP funcional implementado y verificado automaticamente; pendiente de aceptacion manual y publicacion futura.
+
+## Implementado en Fase 5
+
+### Ausencias y justificaciones
+
+- `/empleado/ausencias` permite al funcionario declarar una ausencia propia medica, injustificada u otra justificada. La declaracion queda pendiente y nunca se considera justificada definitivamente sin revision HR.
+- `/tenant/ausencias` permite al autorizador registrar ocurrencias solamente para sus departamentos y a Recursos Humanos hacerlo dentro de sus empresas autorizadas.
+- La revision y reclasificacion final son exclusivas de Recursos Humanos. Declaracion, cambios de estado, clasificacion, usuario, fecha y comentario se conservan en un historial funcional; una correccion cancela logicamente y no elimina registros.
+- El computo reutiliza jornadas y feriados existentes y guarda una instantanea por fecha. Se rechazan ausencias duplicadas; los conflictos con vacaciones o permisos se muestran y solamente un usuario operativo puede confirmarlos, sin modificar la solicitud preexistente.
+
+### Documentos justificativos seguros
+
+- Recursos Humanos puede cargar PDF, JPEG o PNG de hasta 5 MB desde el detalle de la ausencia. Se validan extension, MIME, firma binaria y tamano antes de escanear con ClamAV.
+- El archivo se guarda en `bytea` dentro del schema tenant con nombre, MIME, tamano, SHA-256, usuario, fecha y estado antivirus. No existe ruta publica ni se registra contenido medico en logs.
+- La descarga vuelve a comprobar rol HR, cuenta, tenant y alcance empresarial. Solamente se entregan archivos con estado `Clean`; en Development un archivo no escaneado queda identificado y con descarga bloqueada. TenantAdministrator y Approver no reciben acceso por sus roles.
+
+### Alertas operativas y dashboard
+
+- Un proceso diario genera alertas idempotentes por tenant y permite marcarlas como atendidas. Incluye ausencias pendientes, injustificadas, documentacion medica pendiente y riesgo de segundo periodo legal pendiente.
+- La alerta preventiva de vacaciones requiere un periodo ya pendiente con saldo legal y otro periodo posterior cuyo limite de seis meses se alcanza dentro de 60 dias. El calculo usa causacion, `UseBy` y consumo legal; las reservas no ocultan la situacion.
+- `/dashboard` muestra datos reales segun rol: administracion del grupo sin salario ni datos medicos; RR. HH. por alcance empresarial; autorizadores por departamentos; y funcionario solamente con su informacion propia.
+- Las solicitudes pendientes se obtienen del nivel actualmente habilitado y de los actores copiados al circuito; no se generan avisos para etapas futuras.
+
+### Reporte Excel de permisos
+
+- `/tenant/reportes/permisos` esta disponible exclusivamente para Recursos Humanos y limita empresas y departamentos a su alcance configurado.
+- Exporta un unico `.xlsx` con filtros por empresa, departamento, fechas y estado, e incluye empresa, departamento, legajo, nombre, tipo, goce, unidad, fechas, cantidad, fecha de solicitud, estado y resolucion final.
+- ClosedXML genera un solo hoja operativa con tabla filtrable, encabezados, fechas nativas, formatos, anchos legibles y panel congelado. No contiene salarios, ausencias ni documentos medicos.
+
+### Persistencia, migracion y verificacion
+
+- La migracion tenant `Phase5AbsencesAlerts` agrega `absence`, detalle diario, historial, documentos y alertas de forma aditiva. No recrea schemas ni altera historiales, saldos, solicitudes o datos manuales existentes.
+- La migration se aplico mediante el arranque local a todos los tenants activos; se verificaron expresamente las nuevas tablas en `Gruppo Prova` (`A`) y `Grupo QA Funcional` (`QA27`).
+- `dotnet build --configuration Release`: 0 advertencias y 0 errores.
+- `dotnet test`: 47 pruebas superadas, 0 fallidas y 0 omitidas. Las cinco pruebas nuevas cubren autorizacion y trazabilidad de ausencias, documentos, alertas sin duplicados, dashboard multirol y reapertura del Excel con filtros.
+- Ambos contextos EF quedan sin cambios de modelo pendientes y `/health` respondio `Healthy` en una instancia Release temporal.
+
+### Prueba manual recomendada
+
+- Funcionario: `/empleado/ausencias` -> declarar -> consultar estado.
+- Autorizador o HR: `/tenant/ausencias` -> registrar dentro del alcance -> abrir detalle.
+- Recursos Humanos: resolver clasificacion, cargar un archivo de prueba no sensible y comprobar su estado antivirus/descarga.
+- Todos los roles tenant: `/dashboard`; Recursos Humanos: `/tenant/reportes/permisos` -> aplicar filtros -> descargar y abrir Excel.
+- Confirmar que un autorizador no ve documentos, un administrador tenant no ve datos medicos y un empleado no ve registros ajenos.
 
 ## Implementado en Fase 4
 
@@ -87,7 +131,7 @@
 ### Limitaciones pendientes
 
 - Los permisos con/sin goce son clasificaciones administrativas: no existen liquidacion, descuento salarial ni integracion payroll.
-- No se agregaron adjuntos, certificados, ausencias, alertas ni reportes. Corresponden a la Fase 5 y requieren autorizacion expresa.
+- Al cierre de la Fase 4 todavia no existian adjuntos, ausencias, alertas ni reportes; quedaron incorporados posteriormente en la Fase 5 descrita al inicio de este documento.
 
 ## Implementado en Fase 3
 
@@ -278,8 +322,10 @@
 3. Configurar `Application:PublicBaseUrl` con el dominio HTTPS real antes de enviar invitaciones desde un ambiente publicado.
 4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
 5. Obtener validacion juridica documentada sobre la correspondencia entre la regla funcional aprobada y la expresion legal `dias habiles corridos`.
-6. Permanecen fuera de esta entrega las notificaciones del circuito y las solicitudes de permisos con o sin goce, que no fueron autorizadas para esta correccion.
+6. Ejecutar la aceptacion manual completa de la Fase 5 con usuarios reales de prueba para cada rol.
+7. El deployment permanece pendiente por falta de VPS. No se configuro Ubuntu, Nginx, systemd, DNS, HTTPS ni infraestructura de produccion.
+8. ClamAV debe estar disponible y configurado como obligatorio antes de aceptar documentos en produccion.
 
 ## Proxima actividad autorizada
 
-Continuar solamente con los alcances restantes de Fase 4 que el responsable del producto autorice expresamente. No iniciar Fase 5.
+Realizar la aceptacion manual del MVP. La publicacion sera una actividad futura separada cuando exista el VPS; no iniciar funcionalidades posteriores al MVP sin autorizacion expresa.

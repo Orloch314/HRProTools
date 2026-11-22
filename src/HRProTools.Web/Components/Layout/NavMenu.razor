@@ -5,10 +5,13 @@
 <input type="checkbox" title="Abrir navegacion" class="navbar-toggler" />
 <div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
 <nav>
+    <AuthorizeView Roles="@($"{AppRoles.TenantAdministrator},{AppRoles.HumanResources},{AppRoles.Approver},{AppRoles.Employee}")"><Authorized><NavLink href="dashboard">⌂ Dashboard</NavLink></Authorized></AuthorizeView>
     <AuthorizeView Roles="@AppRoles.GlobalAdministrator"><Authorized><span class="nav-section">Administracion global</span><NavLink href="admin/grupos">▦ Grupos empresariales</NavLink><NavLink href="admin/smtp">✉ Correo SMTP</NavLink></Authorized></AuthorizeView>
     <AuthorizeView Roles="@AppRoles.TenantAdministrator"><Authorized><span class="nav-section">Gestion del grupo</span><NavLink href="tenant/funcionarios">♟ Funcionarios</NavLink><NavLink href="tenant/organizacion">▤ Organizacion</NavLink><NavLink href="tenant/jornadas">◷ Jornadas y feriados</NavLink><NavLink href="tenant/vacaciones/politicas">▧ Políticas de vacaciones</NavLink><NavLink href="tenant/vacaciones/circuito">⚙ Circuito de solicitudes</NavLink><NavLink href="tenant/importacion">⇧ Importación Excel</NavLink><NavLink href="tenant/identidad-visual">▣ Identidad visual</NavLink></Authorized></AuthorizeView>
     <AuthorizeView Policy="@AppPolicies.VacationWorkflowAccess"><Authorized><NavLink href="tenant/solicitudes">✓ Solicitudes</NavLink></Authorized></AuthorizeView>
-    <AuthorizeView Roles="@AppRoles.Employee"><Authorized><span class="nav-section">Autoservicio</span><NavLink href="empleado">● Mis datos</NavLink><NavLink href="empleado/vacaciones">◷ Mis vacaciones</NavLink><NavLink href="empleado/permisos">◴ Mis permisos</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView Roles="@($"{AppRoles.Approver},{AppRoles.HumanResources}")"><Authorized><NavLink href="tenant/ausencias">! Ausencias</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView Roles="@AppRoles.HumanResources"><Authorized><NavLink href="tenant/reportes/permisos">⇩ Reporte de permisos</NavLink></Authorized></AuthorizeView>
+    <AuthorizeView Roles="@AppRoles.Employee"><Authorized><span class="nav-section">Autoservicio</span><NavLink href="empleado">● Mis datos</NavLink><NavLink href="empleado/vacaciones">◷ Mis vacaciones</NavLink><NavLink href="empleado/permisos">◴ Mis permisos</NavLink><NavLink href="empleado/ausencias">! Mis ausencias</NavLink></Authorized></AuthorizeView>
     <AuthorizeView><Authorized><span class="nav-section">Cuenta</span><NavLink href="Account/Manage">● @context.User.Identity?.Name</NavLink><form action="Account/Logout" method="post"><AntiforgeryToken/><input type="hidden" name="ReturnUrl" value="@currentUrl"/><button type="submit">↪ Cerrar sesion</button></form></Authorized><NotAuthorized><NavLink href="Account/Login">→ Iniciar sesion</NavLink></NotAuthorized></AuthorizeView>
 </nav>
 </div>

@@ -1,0 +1,18 @@
+@page "/tenant/reportes/permisos"
+@attribute [Authorize(Policy = AppPolicies.HumanResourcesOperations)]
+@inject PermissionReportService Reports
+
+<PageTitle>Reporte de permisos - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Reporte Excel</span><h1>Permisos</h1><p>Un unico reporte operativo, limitado al alcance empresarial de Recursos Humanos.</p></div></div>
+<section class="panel editor-accent"><h2>Filtros</h2><div class="form-grid">
+<label><span>Empresa</span><select @bind="companyId"><option value="">Todas las autorizadas</option>@foreach(var company in options.Companies){<option value="@company.Id">@company.Name</option>}</select></label>
+<label><span>Departamento</span><select @bind="departmentId"><option value="">Todos los autorizados</option>@foreach(var department in FilteredDepartments){<option value="@department.Id">@department.Name</option>}</select></label>
+<label><span>Fecha inicial</span><input type="date" @bind="from" /></label><label><span>Fecha final</span><input type="date" @bind="to" /></label>
+<label><span>Estado</span><select @bind="status"><option value="">Todos</option><option value="PENDING">Pendiente</option><option value="APPROVED">Aprobado</option><option value="REJECTED">Rechazado</option><option value="CANCELLED">Cancelado</option></select></label>
+</div><a class="btn-primary" href="@DownloadUrl">Descargar Excel</a><p class="field-help">El archivo contiene fechas nativas, tabla filtrable e informacion de permisos; no incluye salarios ni documentacion medica.</p></section>
+@code{
+    private PermissionReportOptions options=new([],[]);private Guid? companyId,departmentId;private DateOnly? from,to;private string status="";
+    protected override async Task OnInitializedAsync()=>options=await Reports.GetOptionsAsync();
+    private IEnumerable<PermissionReportOption> FilteredDepartments=>companyId.HasValue?options.Departments.Where(x=>x.CompanyId==companyId):options.Departments;
+    private string DownloadUrl{get{var q=new List<string>();if(companyId.HasValue)q.Add($"companyId={companyId}");if(departmentId.HasValue)q.Add($"departmentId={departmentId}");if(from.HasValue)q.Add($"from={from:yyyy-MM-dd}");if(to.HasValue)q.Add($"to={to:yyyy-MM-dd}");if(!string.IsNullOrWhiteSpace(status))q.Add($"status={Uri.EscapeDataString(status)}");return "/tenant/reportes/permisos.xlsx"+(q.Count==0?"":"?"+string.Join("&",q));}}
+}

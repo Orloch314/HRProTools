@@ -31,6 +31,11 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<PermissionRequestDay> PermissionRequestDays => Set<PermissionRequestDay>();
     public DbSet<PermissionApprovalStep> PermissionApprovalSteps => Set<PermissionApprovalStep>();
     public DbSet<PermissionApprovalStepActor> PermissionApprovalStepActors => Set<PermissionApprovalStepActor>();
+    public DbSet<Absence> Absences => Set<Absence>();
+    public DbSet<AbsenceDay> AbsenceDays => Set<AbsenceDay>();
+    public DbSet<AbsenceHistory> AbsenceHistory => Set<AbsenceHistory>();
+    public DbSet<AbsenceDocument> AbsenceDocuments => Set<AbsenceDocument>();
+    public DbSet<OperationalAlert> OperationalAlerts => Set<OperationalAlert>();
     public DbSet<NotificationOutboxItem> NotificationOutbox => Set<NotificationOutboxItem>();
     public DbSet<TenantImportBatch> ImportBatches => Set<TenantImportBatch>();
 
@@ -376,6 +381,85 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.HasIndex(x => new { x.PermissionApprovalStepId, x.UserId }).IsUnique();
             entity.HasIndex(x => x.UserId);
             entity.HasOne(x => x.PermissionApprovalStep).WithMany(x => x.Actors).HasForeignKey(x => x.PermissionApprovalStepId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<Absence>(entity =>
+        {
+            entity.ToTable("absence", table =>
+            {
+                table.HasCheckConstraint("ck_absence_dates", "\"EndDate\" >= \"StartDate\"");
+                table.HasCheckConstraint("ck_absence_days", "\"AffectedWorkdays\" > 0");
+                table.HasCheckConstraint("ck_absence_type", "\"DeclaredType\" IN ('MEDICAL', 'UNJUSTIFIED', 'OTHER_JUSTIFIED') AND (\"FinalClassification\" IS NULL OR \"FinalClassification\" IN ('MEDICAL', 'UNJUSTIFIED', 'OTHER_JUSTIFIED'))");
+                table.HasCheckConstraint("ck_absence_status", "\"Status\" IN ('DECLARED', 'PENDING_REVIEW', 'JUSTIFIED', 'UNJUSTIFIED', 'CANCELLED')");
+            });
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.DeclaredType).HasMaxLength(32);
+            entity.Property(x => x.FinalClassification).HasMaxLength(32);
+            entity.Property(x => x.Status).HasMaxLength(24);
+            entity.Property(x => x.Reason).HasMaxLength(1000);
+            entity.Property(x => x.RegisteredByUserId).HasMaxLength(450);
+            entity.Property(x => x.RegisteredByRole).HasMaxLength(32);
+            entity.Property(x => x.ResolvedByUserId).HasMaxLength(450);
+            entity.Property(x => x.ResolutionComment).HasMaxLength(1000);
+            entity.Property(x => x.CancelledByUserId).HasMaxLength(450);
+            entity.Property(x => x.CancellationReason).HasMaxLength(500);
+            entity.HasIndex(x => new { x.EmploymentId, x.Status });
+            entity.HasIndex(x => new { x.StartDate, x.EndDate });
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Company).WithMany().HasForeignKey(x => x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Department).WithMany().HasForeignKey(x => x.DepartmentId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<AbsenceDay>(entity =>
+        {
+            entity.ToTable("absence_day");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.WorkScheduleName).HasMaxLength(160);
+            entity.Property(x => x.HolidayName).HasMaxLength(160);
+            entity.HasIndex(x => new { x.AbsenceId, x.Date }).IsUnique();
+            entity.HasOne(x => x.Absence).WithMany(x => x.Dates).HasForeignKey(x => x.AbsenceId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<AbsenceHistory>(entity =>
+        {
+            entity.ToTable("absence_history");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PreviousStatus).HasMaxLength(24);
+            entity.Property(x => x.NewStatus).HasMaxLength(24);
+            entity.Property(x => x.PreviousClassification).HasMaxLength(32);
+            entity.Property(x => x.NewClassification).HasMaxLength(32);
+            entity.Property(x => x.ChangedByUserId).HasMaxLength(450);
+            entity.Property(x => x.Comment).HasMaxLength(1000);
+            entity.HasIndex(x => new { x.AbsenceId, x.ChangedAtUtc });
+            entity.HasOne(x => x.Absence).WithMany(x => x.History).HasForeignKey(x => x.AbsenceId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<AbsenceDocument>(entity =>
+        {
+            entity.ToTable("absence_document", table => table.HasCheckConstraint("ck_absence_document_size", "\"Size\" > 0 AND \"Size\" <= 5242880"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OriginalFileName).HasMaxLength(255);
+            entity.Property(x => x.ContentType).HasMaxLength(64);
+            entity.Property(x => x.Sha256).HasMaxLength(64);
+            entity.Property(x => x.Content).HasColumnType("bytea");
+            entity.Property(x => x.AntivirusStatus).HasMaxLength(40);
+            entity.Property(x => x.UploadedByUserId).HasMaxLength(450);
+            entity.HasIndex(x => x.Sha256);
+            entity.HasOne(x => x.Absence).WithMany(x => x.Documents).HasForeignKey(x => x.AbsenceId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<OperationalAlert>(entity =>
+        {
+            entity.ToTable("operational_alert", table => table.HasCheckConstraint("ck_operational_alert_status", "\"Status\" IN ('OPEN', 'ATTENDED')"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.AlertKey).HasMaxLength(180);
+            entity.Property(x => x.Type).HasMaxLength(48);
+            entity.Property(x => x.Title).HasMaxLength(200);
+            entity.Property(x => x.Message).HasMaxLength(500);
+            entity.Property(x => x.Status).HasMaxLength(16);
+            entity.Property(x => x.AttendedByUserId).HasMaxLength(450);
+            entity.HasIndex(x => x.AlertKey).IsUnique();
+            entity.HasIndex(x => new { x.Status, x.CompanyId, x.DepartmentId });
         });
 
         builder.Entity<NotificationOutboxItem>(entity =>

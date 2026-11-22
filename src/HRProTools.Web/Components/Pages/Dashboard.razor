@@ -1,0 +1,37 @@
+@page "/dashboard"
+@attribute [Authorize]
+@inject RoleDashboardService Dashboards
+@inject OperationalAlertService Alerts
+
+<PageTitle>Dashboard - HR ProTools</PageTitle>
+
+@if (dashboard is null)
+{
+    <div class="notice">Cargando panel...</div>
+}
+else
+{
+    <div class="page-heading"><div><span class="eyebrow">Resumen operativo</span><h1>@dashboard.Title</h1><p>@dashboard.Subtitle</p></div></div>
+    <section class="metric-grid">
+        @foreach (var metric in dashboard.Metrics)
+        {
+            <div class="metric-card"><span>@metric.Label</span><strong>@metric.Value</strong>@if(metric.Link is not null){<a href="@metric.Link">Ver detalle</a>}</div>
+        }
+    </section>
+    @if (dashboard.Alerts.Count > 0)
+    {
+        <section class="panel"><div class="panel-title"><h2>Alertas operativas</h2><span>@dashboard.Alerts.Count</span></div>
+            @foreach (var alert in dashboard.Alerts)
+            {
+                <div class="alert-row"><div><strong>@alert.Title</strong><p>@alert.Message</p></div><button class="btn-secondary" @onclick="() => AttendAsync(alert.Id)">Marcar atendida</button></div>
+            }
+        </section>
+    }
+    <AuthorizeView Roles="@AppRoles.HumanResources"><Authorized><section class="panel compact-action"><div><h2>Reporte de permisos</h2><p>Exportacion Excel filtrada dentro de su alcance empresarial.</p></div><a class="btn-primary" href="tenant/reportes/permisos">Abrir reporte</a></section></Authorized></AuthorizeView>
+}
+
+@code {
+    private RoleDashboard? dashboard;
+    protected override async Task OnInitializedAsync() => dashboard = await Dashboards.GetAsync();
+    private async Task AttendAsync(Guid id) { await Alerts.MarkAttendedAsync(id); dashboard = await Dashboards.GetAsync(); }
+}

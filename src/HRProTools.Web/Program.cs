@@ -58,7 +58,8 @@ builder.Services.AddAuthorizationBuilder()
     .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
     .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee))
     .AddPolicy(AppPolicies.VacationWorkflowAccess, policy =>
-        policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources));
+        policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources))
+    .AddPolicy(AppPolicies.HumanResourcesOperations, policy => policy.RequireRole(AppRoles.HumanResources));
 
 var keyPath = Path.GetFullPath(builder.Configuration["DataProtection:KeyPath"] ?? "storage/keys", builder.Environment.ContentRootPath);
 Directory.CreateDirectory(keyPath);
@@ -82,11 +83,16 @@ builder.Services.AddScoped<VacationService>();
 builder.Services.AddScoped<VacationWorkflowService>();
 builder.Services.AddScoped<VacationRequestService>();
 builder.Services.AddScoped<PermissionRequestService>();
+builder.Services.AddScoped<AbsenceService>();
+builder.Services.AddScoped<OperationalAlertService>();
+builder.Services.AddScoped<RoleDashboardService>();
+builder.Services.AddScoped<PermissionReportService>();
 builder.Services.AddScoped<NotificationOutboxService>();
 builder.Services.AddScoped<INotificationEmailTransport, SmtpNotificationEmailTransport>();
 builder.Services.AddScoped<EmployeeExcelImportService>();
 builder.Services.AddHostedService<VacationAccrualHostedService>();
 builder.Services.AddHostedService<NotificationOutboxHostedService>();
+builder.Services.AddHostedService<OperationalAlertHostedService>();
 
 var app = builder.Build();
 
@@ -132,6 +138,7 @@ app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 app.MapHealthChecks("/health");
 app.MapTenantLogo();
+app.MapPhase5Endpoints();
 app.MapGet("/tenant/importacion/plantilla", () => Results.File(
         EmployeeExcelImportService.CreateTemplate(),
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
