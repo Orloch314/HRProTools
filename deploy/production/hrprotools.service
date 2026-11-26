@@ -1,0 +1,28 @@
+[Unit]
+Description=HR ProTools
+After=network.target postgresql@18-main.service clamav-daemon.service
+
+[Service]
+User=hrprotools
+Group=hrprotools
+SupplementaryGroups=clamav
+WorkingDirectory=/opt/hrprotools/current/web
+ExecStart=/opt/hrprotools/current/web/HRProTools.Web
+EnvironmentFile=/etc/hrprotools/production.env
+Restart=on-failure
+RestartSec=10
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/hrprotools
+MemoryHigh=384M
+MemoryMax=768M
+CPUQuota=100%
+TasksMax=256
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

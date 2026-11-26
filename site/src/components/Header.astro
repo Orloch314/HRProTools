@@ -1,0 +1,20 @@
+---
+import { navigation, loginUrl } from '../data/site';
+const current = Astro.url.pathname;
+---
+<header class="site-header">
+ <div class="header-inner">
+  <a class="brand" href="/" aria-label="HR ProTools — Inicio"><img src="/images/logo.png" width="64" height="64" alt=""/><span><strong>HR ProTools</strong><small>Gestión de Recursos Humanos</small></span></a>
+  <button class="menu-toggle" aria-controls="main-nav" aria-expanded="false">Menú <span aria-hidden="true">☰</span></button>
+  <nav id="main-nav" aria-label="Navegación principal">
+   {navigation.map(([href, label]) => <a href={href} aria-current={current === href ? 'page' : undefined}>{label}</a>)}
+   <a class="login-link" href={loginUrl}>Iniciar sesión</a><a class="button button-small" href="/contacto/">Solicitar demostración</a>
+  </nav>
+ </div>
+</header>
+<script>
+ const toggle = document.querySelector<HTMLButtonElement>('.menu-toggle');
+ const nav = document.querySelector<HTMLElement>('#main-nav');
+ toggle?.addEventListener('click', () => { const open = toggle.getAttribute('aria-expanded') !== 'true'; toggle.setAttribute('aria-expanded', String(open)); nav?.classList.toggle('is-open', open); });
+ document.addEventListener('keydown', (event) => { if (event.key === 'Escape' && toggle?.getAttribute('aria-expanded') === 'true') { toggle.setAttribute('aria-expanded', 'false'); nav?.classList.remove('is-open'); toggle.focus(); } });
+</script>

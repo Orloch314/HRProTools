@@ -1,0 +1,11 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Icon from '../components/Icon.astro';
+const principles = [
+ ['sprout','Nuestro compromiso','Promover una gestión de personas más clara y ordenada. Estos principios orientan el desarrollo del producto; no representan certificaciones ni resultados sociales medidos.'],
+ ['shield','Gestión responsable','Cuidar el acceso a la información mediante roles y alcances, y acompañar el uso responsable de los datos de las organizaciones.'],
+ ['people','Accesibilidad e inclusión','Priorizar contenidos comprensibles, navegación con teclado y diseños que se adapten a diferentes pantallas. La accesibilidad es un trabajo continuo.'],
+ ['refresh','Mejora continua','Escuchar las necesidades de uso y revisar los procesos para mejorar la claridad y la experiencia de las personas.'],
+];
+---
+<BaseLayout title="Responsabilidad Social Empresarial"><section class="page-hero"><div class="container rse-intro"><div><span class="eyebrow">RSE</span><h1>Una gestión responsable<br/> empieza por las personas.</h1><p>Nuestros principios para construir una herramienta que acompañe el trabajo de las organizaciones.</p></div><div class="rse-symbol" aria-hidden="true"><Icon name="sprout"/></div></div></section><section class="section"><div class="container narrow principles">{principles.map(([icon,title,text])=><article class="feature-card"><span class="icon-box"><Icon name={icon}/></span><div><h2>{title}</h2><p>{text}</p></div></article>)}</div></section></BaseLayout>

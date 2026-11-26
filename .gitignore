@@ -4,6 +4,8 @@ obj/
 artifacts/
 TestResults/
 coverage/
+__pycache__/
+*.pyc
 *.trx
 
 # IDE and user files

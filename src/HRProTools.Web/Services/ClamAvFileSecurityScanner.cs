@@ -8,6 +8,7 @@ namespace HRProTools.Web.Services;
 public sealed class ClamAvOptions
 {
     public string Host { get; set; } = string.Empty;
+    public string UnixSocketPath { get; set; } = string.Empty;
     public int Port { get; set; } = 3310;
     public int TimeoutSeconds { get; set; } = 15;
     public bool Required { get; set; }
@@ -35,7 +36,7 @@ public sealed class ClamAvFileSecurityScanner(
         CancellationToken cancellationToken = default)
     {
         var settings = options.Value;
-        if (string.IsNullOrWhiteSpace(settings.Host))
+        if (string.IsNullOrWhiteSpace(settings.Host) && string.IsNullOrWhiteSpace(settings.UnixSocketPath))
         {
             if (environment.IsProduction() || settings.Required)
                 throw new InvalidOperationException("El escaneo antivirus es obligatorio y ClamAV no esta configurado.");
@@ -48,9 +49,16 @@ public sealed class ClamAvFileSecurityScanner(
 
         try
         {
-            using var client = new TcpClient();
-            await client.ConnectAsync(settings.Host, settings.Port, timeout.Token);
-            await using var stream = client.GetStream();
+            var unix = !string.IsNullOrWhiteSpace(settings.UnixSocketPath);
+            using var socket = new Socket(unix ? AddressFamily.Unix : AddressFamily.InterNetwork, SocketType.Stream, unix ? ProtocolType.Unspecified : ProtocolType.Tcp);
+            if (unix)
+            {
+                if (!Path.IsPathFullyQualified(settings.UnixSocketPath))
+                    throw new InvalidOperationException("La ruta del socket ClamAV debe ser absoluta.");
+                await socket.ConnectAsync(new UnixDomainSocketEndPoint(settings.UnixSocketPath), timeout.Token);
+            }
+            else await socket.ConnectAsync(settings.Host, settings.Port, timeout.Token);
+            await using var stream = new NetworkStream(socket, ownsSocket: false);
 
             await stream.WriteAsync("zINSTREAM\0"u8.ToArray(), timeout.Token);
             const int chunkSize = 64 * 1024;

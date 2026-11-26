@@ -70,6 +70,9 @@ public sealed class SmtpSettingsService(
     }
 
     public async Task SendAsync(string recipient, string subject, string html, CancellationToken cancellationToken = default)
+        => _ = await SendWithReceiptAsync(recipient, subject, html, cancellationToken);
+
+    public async Task<string> SendWithReceiptAsync(string recipient, string subject, string html, CancellationToken cancellationToken = default)
     {
         var settings = await db.SmtpConfigurations.AsNoTracking()
             .SingleOrDefaultAsync(x => x.Id == 1, cancellationToken)
@@ -95,8 +98,9 @@ public sealed class SmtpSettingsService(
             var password = settings.ProtectedPassword.Length == 0 ? string.Empty : _protector.Unprotect(settings.ProtectedPassword);
             await client.AuthenticateAsync(settings.Username, password, cancellationToken);
         }
-        await client.SendAsync(message, cancellationToken);
+        var receipt = await client.SendAsync(message, cancellationToken);
         await client.DisconnectAsync(true, cancellationToken);
+        return receipt;
     }
 
     private static SecureSocketOptions ParseMode(string value) => value switch

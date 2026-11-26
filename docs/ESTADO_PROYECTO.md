@@ -1,8 +1,41 @@
 # Estado del proyecto HR ProTools
 
-**Fecha:** 24/11/2026
+**Fecha:** 26/11/2026
 **Fase actual:** Fase 5/5 - cierre funcional del MVP
-**Estado:** MVP funcional implementado y verificado automaticamente; pendiente de aceptacion manual y publicacion futura.
+**Estado:** MVP funcional implementado; deployment de pruebas autorizado y en ejecución. La preparación y auditorías anteriores se conservan como registros históricos.
+
+## Deployment de pruebas — autorizado y en ejecución — 26/11/2026
+
+- Autorizados commit/push de la rama existente y deployment incremental en el VPS 95.217.134.178, con dominios HR, PostgreSQL 18/main, Nginx y ClamAV existentes. Solo recursos nuevos de HR; ninguna reparación de Eqmatch ni cambios en otras aplicaciones.
+- No se instalarán backups automáticos, timers ni copias externas. Scripts manuales de backup/restauración conservados; copias de configuración puntuales solo para rollback dirigido. Esta decisión sustituye los pendientes anteriores de política externa de backups.
+- Nueva entrada segura interactiva para bootstrap y SMTP Aruba: getpass → stdin, sin secretos en argumentos/archivos/logs. SMTP se guarda mediante el mecanismo cifrado existente. Prueba autorizada única a orloch314@gmail.com, con reserva persistente que impide reenvío automático. DKIM se informa según evidencia, sin bloquear toda la publicación.
+- Revalidación remota inicial solo lectura: recursos HR ausentes, puerto 5091 libre, servicios anteriores activos salvo Eqmatch ya inactivo/dead; se preserva su estado. No hubo cambios remotos en esta revalidación.
+- Pruebas Release actuales: **111/111 correctas**, 0 fallidas/omitidas. Paquete de producción se generará después del commit publicado usando `-RequireClean`, version.json y SHA-256; no se publicará el bundle previo con fuentes sin commit.
+- Informe operativo vigente: sección 13 de [05-Deployment-Produccion.md](05-Deployment-Produccion.md). Commit, resultado y comprobaciones remotas se completarán al terminar.
+
+## Producción — preparación local autorizada — 26/11/2026
+
+- Preparación y validación local completadas según aprobación del usuario, **sin conectar ni modificar el VPS**. La aprobación técnica de HBA se conserva, pero su ejecución remota sigue pendiente de autorización expresa. No se reparó ni cambió ningún servicio ajeno.
+- Preparados: soporte ClamAV Unix con fallo seguro, forwarding limitado a loopback/un salto, cookies seguras, claves Data Protection persistentes fuera del release y cambio obligatorio de contraseña inicial con enforcement backend/circuito. Migración global aditiva `20261126200702_InitialAdministratorPasswordChange`; default false preserva cuentas anteriores, bootstrap nuevo marca solo la cuenta inicial.
+- CLI de migración y bootstrap sin servidor/workers. Nueva credencial por prompt oculto → stdin; ninguna contraseña temporal anterior se utiliza ni almacena en scripts/configuración de bootstrap. Production rechaza `BootstrapAdmin:Password` persistido. Cuenta inicial futura: la indicada por el usuario, sin usuarios/tenants de prueba.
+- Astro: `info@hrprotools.com`, `mailto:` y acceso público correcto; formulario sigue sin envío. Build estático de 9 páginas y verificación de 210 enlaces/recursos. No se publica Node ni otra autenticación.
+- Scripts locales bajo `deploy/`: construcción de .NET 10 Linux self-contained, provisión HR exclusiva, validación/copia/rollback HBA, unidades systemd propias, vhosts ACME/TLS, hook de renovación, backups propios y rollback sin DROP/Down. No fueron ejecutados en producción. Cuenta/base/puertos/rutas se revalidan antes de aplicar.
+- Resultados: build Release correcto; **111 pruebas .NET superadas**, 0 fallidas/omitidas, PostgreSQL QA separado. Binario Linux real ejecutado sin root dentro de un cluster temporal propio del contenedor HR local: migración, bootstrap sintético, login, cookie Secure, bloqueo previo de admin/Blazor, cambio de contraseña y acceso posterior correctos. Ningún dato local se traslada a producción.
+- Recuperación verificada con **pg_dump → pg_restore reales**, comparación de todas las tablas auth/platform y restauración de claves: la sesión anterior sigue válida tras reiniciar solo la app QA. HBA parser/aislamiento/usuario ajeno/rollback sin restart comprobados en el cluster QA. Clusters propios detenidos; el DB local original no se migró ni reconfiguró.
+- Nginx 1.31.2: ambos modos ACME/TLS superan `nginx -t` en contenedores locales efímeros sin red/puertos publicados, con certificados QA. Scripts Python/shell válidos y rechazo sin `--apply` verificado. Modelos EF global/tenant sin diferencias pendientes.
+- Bundle final: `artifacts/production/prepared-20261126.tar.gz`, manifiestos SHA-256 y SQL idempotente. Las fuentes aún tienen cambios locales sin commit; no se hizo commit/push ni publicación remota de esta preparación.
+- Pendientes para publicar: autorización ejecutiva remota; nueva contraseña introducida en prompt seguro; credenciales/remitente Aruba y DKIM verificados más destinatario/envío controlado autorizado; política/destino externo de backup y revalidación de baseline/copia recuperable del alcance. No solicitar ni pegar contraseñas en chat.
+- Informe y procedimiento actualizado: [05-Deployment-Produccion.md](05-Deployment-Produccion.md), sección 12. La validación local no sustituye HTTPS público, SignalR del navegador, SMTP real, límites del VPS ni pruebas de continuidad posteriores al deployment.
+
+## Producción — Fase 1 de auditoría del VPS — 26/11/2026
+
+- Auditoría SSH de solo lectura completada en `95.217.134.178`: Ubuntu 26.04 LTS, 2 vCPU, 3.7 GiB RAM (aprox. 1.7 disponibles), 14 GiB de disco disponibles, Nginx 1.31.2, PostgreSQL 18.6 con clusters 5432/5433 y ClamAV 1.5.4 activos. .NET compartido disponible: 8.0.28; se propone HR .NET 10 self-contained sin alterar runtimes ajenos.
+- DNS contrastados en dos resolver públicos: raíz y app apuntan al VPS; `www` es alias de la raíz; sin AAAA final observado. Sin necesidad de cambiar Aruba. HTTPS HR todavía no configurado; certificados/vhosts nuevos pendientes.
+- Se identificaron adaptaciones previas al deployment: socket Unix para el cliente ClamAV, forwarded headers confiables, cambio obligatorio de contraseña inicial y bootstrap seguro. No se modificó código aplicativo. SMTP STARTTLS 587 validó TLS/certificado; credenciales, remitente `info@hrprotools.com`, selector DKIM y prueba autorizada siguen pendientes. El sitio requiere configurar login y publicar contacto comercial, manteniendo el formulario sin falso envío.
+- Propuesta de aislamiento: servicio y usuario HR propios, Kestrel loopback 5091 (libre al inspeccionar), vhosts en `conf.d`, DB nueva `hrprotool` y rol propio en cluster 5432; sin importar datos locales. Las bases existentes tienen CONNECT de PUBLIC: el bloqueo estricto del rol nuevo a otras bases requiere un bloque HBA específico, con autorización posterior antes de tocar configuración global.
+- Hallazgo preexistente ajeno: `eqmatch.service` en bucle de auto-reinicio/core-dump y certificado heredado Eqmatch vencido; no se reparó ni reinició. Los servicios activos y sitios actuales permanecieron operativos; 23 improntas de configuración seleccionadas coinciden antes/después. Backups observados sin abrir datos ajenos; no se declara recuperación probada por su mera existencia.
+- **No hubo instalaciones, creación de DB/usuarios, publicación, certificados, modificaciones DNS ni recargas/reinicios.** Solo se escribe documentación local. No se ejecutaron pruebas funcionales/build nuevas porque esta fase no cambia código.
+- Informe con inventario, riesgos, bloqueos, backup/rollback y cambios propuestos archivo por archivo: [05-Deployment-Produccion.md](05-Deployment-Produccion.md). Se detuvo al final de Fase 1 según instrucción expresa; la preparación local autorizada posteriormente se registra arriba. La ejecución remota permanece pendiente.
 
 ## Calendario perpetuo y día libre empresarial — 24/11/2026
 

@@ -9,6 +9,7 @@ public class ApplicationUser : IdentityUser
     public Guid? PersonId { get; set; }
     public Guid? ActiveEmploymentId { get; set; }
     public bool IsActive { get; set; } = true;
+    public bool MustChangePassword { get; set; }
     public DateTimeOffset? InvitationSentAtUtc { get; set; }
     public DateTimeOffset? InvitationAcceptedAtUtc { get; set; }
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;

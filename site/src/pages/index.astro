@@ -1,0 +1,9 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import Hero from '../components/Hero.astro';
+import FeatureCards from '../components/FeatureCards.astro';
+import ProductScreenshots from '../components/ProductScreenshots.astro';
+import FinalCTA from '../components/FinalCTA.astro';
+import Icon from '../components/Icon.astro';
+---
+<BaseLayout title="Tu equipo, tus procesos, todo en un solo lugar"><Hero/><section class="section"><div class="container"><div class="section-heading"><span class="eyebrow">MENOS DISPERSIÓN. MÁS CLARIDAD.</span><h2>Todo lo que necesitás<br/> para gestionar tu equipo.</h2><p>Procesos conectados, con un lugar para cada solicitud y un rol para cada responsable.</p></div><FeatureCards/></div></section><ProductScreenshots/><section class="section"><div class="container multi-grid"><div class="multi-art" aria-hidden="true"><span class="group-node"><Icon name="building"/>Grupo empresarial</span><div><span>Empresa A<small>Operaciones · Comercial</small></span><span>Empresa B<small>Administración · Servicios</small></span></div><p>Un entorno compartido. Alcances definidos.</p></div><div><span class="eyebrow">UNA VISIÓN MULTIEMPRESA</span><h2>Distintas empresas.<br/> Una gestión más ordenada.</h2><p>Organizá la estructura de tu grupo sin perder el contexto de cada empresa, departamento y funcionario.</p><ul class="check-list"><li>Información organizada por empresa y departamento.</li><li>Accesos alineados con las responsabilidades.</li><li>Seguimiento de solicitudes e historiales.</li></ul><a class="text-link" href="/funcionalidades/">Explorar las funcionalidades</a></div></div></section><FinalCTA/></BaseLayout>

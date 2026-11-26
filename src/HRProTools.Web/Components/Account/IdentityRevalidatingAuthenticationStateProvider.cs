@@ -35,7 +35,7 @@ internal sealed class IdentityRevalidatingAuthenticationStateProvider(
         {
             return false;
         }
-        if (!user.IsActive) return false;
+        if (!user.IsActive || user.MustChangePassword) return false;
         if (user.TenantId is Guid tenantId &&
             !await db.Tenants.AsNoTracking().AnyAsync(x => x.Id == tenantId && x.Status == TenantStatuses.Active, cancellationToken))
             return false;

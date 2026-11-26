@@ -1,0 +1,5 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { loginConfigured, loginUrl } from '../data/site';
+---
+<BaseLayout title="Ingreso al sistema"><section class="section"><div class="container narrow card"><span class="eyebrow">INGRESO AL SISTEMA</span><h1>Accedé a tu espacio de trabajo.</h1>{loginConfigured ? <><p>Usá el acceso de la aplicación HR ProTools.</p><a class="button" href={loginUrl}>Iniciar sesión</a></> : <p>El enlace público a la aplicación todavía no está configurado. Utilizá el acceso habitual facilitado por el administrador de tu organización.</p>}<a class="text-link" href="/">Volver al inicio</a></div></section></BaseLayout>

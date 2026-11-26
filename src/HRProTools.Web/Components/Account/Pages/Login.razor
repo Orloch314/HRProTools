@@ -91,6 +91,11 @@
                 errorMessage = "Error: la cuenta no esta activa.";
                 return;
             }
+            if (user.MustChangePassword)
+            {
+                RedirectManager.RedirectTo("Account/Manage/ChangePassword");
+                return;
+            }
             if (await UserManager.IsInRoleAsync(user, AppRoles.GlobalAdministrator))
                 RedirectManager.RedirectTo("admin/grupos");
             if (await UserManager.IsInRoleAsync(user, AppRoles.TenantAdministrator))

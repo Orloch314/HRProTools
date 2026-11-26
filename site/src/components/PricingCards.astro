@@ -1,0 +1,8 @@
+---
+const plans = [
+ { title:'Esencial', intro:'Para conversar sobre las necesidades de un equipo y sus procesos cotidianos.', items:['Vacaciones y permisos','Registro y seguimiento de ausencias','Solicitudes y aprobaciones'], price:'Precio por definir' },
+ { title:'Empresas', intro:'Para organizaciones que necesitan ordenar la gestión entre áreas y responsables.', items:['Organización por departamentos','Circuitos de aprobación por niveles','Alertas y reportes operativos'], price:'Precio por definir' },
+ { title:'Grupos empresariales', intro:'Para explorar una gestión compartida entre varias empresas de un mismo grupo.', items:['Administración multiempresa','Roles y alcances de acceso','Información organizada por empresa'], price:'Cotización personalizada' },
+];
+---
+<p class="notice">Propuestas iniciales de organización comercial. Los precios, el alcance y las condiciones de cada plan están pendientes de aprobación; estas tarjetas no constituyen una oferta definitiva.</p><div class="pricing-grid">{plans.map((plan,i)=><article class:list={['pricing-card',{featured:i===1}]}><span class="plan-label">{i===1?'Para conversar en la demo':'Propuesta de plan'}</span><h2>{plan.title}</h2><p>{plan.intro}</p><h3>Procesos a evaluar</h3><ul>{plan.items.map(item=><li>{item}</li>)}</ul><strong class="price">{plan.price}</strong><a class:list={['button',{'button-outline':i!==1}]} href="/contacto/">Consultar este plan</a></article>)}</div>

@@ -1,0 +1,7 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ContactForm from '../components/ContactForm.astro';
+import Icon from '../components/Icon.astro';
+import { contactEmail } from '../data/site';
+---
+<BaseLayout title="Contacto y demostración"><section class="section contact-section"><div class="container contact-grid"><div><span class="eyebrow">CONTACTO</span><h1>Conocé HR ProTools<br/> en acción.</h1><p>Descubrí cómo se organizan los procesos de Recursos Humanos y qué aspectos evaluar para tu empresa.</p><div class="contact-benefits"><article><Icon name="calendar"/><div><h2>Una presentación personalizada</h2><p>Un recorrido pensado para conversar sobre tu estructura y tus procesos.</p></div></article><article><Icon name="people"/><div><h2>Espacio para tus consultas</h2><p>Vacaciones, permisos, ausencias, aprobaciones y administración multiempresa.</p></div></article><article><Icon name="clipboard"/><div><h2>Contacto comercial</h2><p>Escribinos a <a href={`mailto:${contactEmail}`}>{contactEmail}</a> para coordinar una demostración.</p></div></article></div></div><ContactForm/></div></section></BaseLayout>

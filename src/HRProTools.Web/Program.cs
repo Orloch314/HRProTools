@@ -7,8 +7,16 @@ using HRProTools.Web.Components.Account;
 using HRProTools.Web.Data;
 using HRProTools.Web.Security;
 using HRProTools.Web.Services;
+using Microsoft.AspNetCore.HttpOverrides;
+using System.Text.Json;
 
+var migrateOnly = args.Contains("--migrate-only");
+var bootstrapOnly = args.Contains("--bootstrap-admin-stdin");
+var smtpOnly = args.Contains("--configure-smtp-stdin");
+args = args.Where(x => x is not "--migrate-only" and not "--bootstrap-admin-stdin" and not "--configure-smtp-stdin").ToArray();
 var builder = WebApplication.CreateBuilder(args);
+if (builder.Environment.IsProduction() && !string.IsNullOrEmpty(builder.Configuration["BootstrapAdmin:Password"]))
+    throw new InvalidOperationException("Production no admite BootstrapAdmin:Password. Utilice el bootstrap de entrada estándar con una nueva credencial.");
 
 // Add services to the container.
 builder.Services.AddRazorComponents()
@@ -48,21 +56,28 @@ builder.Services.AddIdentityCore<ApplicationUser>(options =>
     .AddSignInManager()
     .AddErrorDescriber<SpanishIdentityErrorDescriber>()
     .AddDefaultTokenProviders();
+builder.Services.AddScoped<IUserClaimsPrincipalFactory<ApplicationUser>, InitialPasswordClaimsFactory>();
+builder.Services.AddScoped<InitialPasswordService>();
+builder.Services.Configure<ForwardedHeadersOptions>(ProductionHosting.ConfigureForwarding);
+if (builder.Environment.IsProduction())
+{
+    builder.Services.ConfigureApplicationCookie(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
+    builder.Services.AddAntiforgery(options => options.Cookie.SecurePolicy = CookieSecurePolicy.Always);
+}
 
 builder.Services.Configure<DataProtectionTokenProviderOptions>(options =>
     options.TokenLifespan = TimeSpan.FromHours(24));
 builder.Services.AddAuthorizationBuilder()
-    .AddPolicy(AppPolicies.GlobalAdministration, policy => policy.RequireRole(AppRoles.GlobalAdministrator))
-    .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator))
-    .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
-    .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources))
-    .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee))
+    .AddPolicy(AppPolicies.GlobalAdministration, policy => policy.RequireRole(AppRoles.GlobalAdministrator).RequireAssertion(InitialPasswordClaimsFactory.Ready))
+    .AddPolicy(AppPolicies.TenantAdministration, policy => policy.RequireRole(AppRoles.TenantAdministrator).RequireAssertion(InitialPasswordClaimsFactory.Ready))
+    .AddPolicy(AppPolicies.EmployeeRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources).RequireAssertion(InitialPasswordClaimsFactory.Ready))
+    .AddPolicy(AppPolicies.SalaryRecords, policy => policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.HumanResources).RequireAssertion(InitialPasswordClaimsFactory.Ready))
+    .AddPolicy(AppPolicies.EmployeeSelfService, policy => policy.RequireRole(AppRoles.Employee).RequireAssertion(InitialPasswordClaimsFactory.Ready))
     .AddPolicy(AppPolicies.VacationWorkflowAccess, policy =>
-        policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources))
-    .AddPolicy(AppPolicies.HumanResourcesOperations, policy => policy.RequireRole(AppRoles.HumanResources));
+        policy.RequireRole(AppRoles.TenantAdministrator, AppRoles.Approver, AppRoles.HumanResources).RequireAssertion(InitialPasswordClaimsFactory.Ready))
+    .AddPolicy(AppPolicies.HumanResourcesOperations, policy => policy.RequireRole(AppRoles.HumanResources).RequireAssertion(InitialPasswordClaimsFactory.Ready));
 
-var keyPath = Path.GetFullPath(builder.Configuration["DataProtection:KeyPath"] ?? "storage/keys", builder.Environment.ContentRootPath);
-Directory.CreateDirectory(keyPath);
+var keyPath = ProductionHosting.KeyDirectory(builder.Configuration, builder.Environment);
 builder.Services.AddDataProtection()
     .SetApplicationName("HRProTools")
     .PersistKeysToFileSystem(new DirectoryInfo(keyPath));
@@ -101,12 +116,12 @@ builder.Services.AddHostedService<OperationalAlertHostedService>();
 
 var app = builder.Build();
 
-if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
+if (migrateOnly || builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
 {
     await using var scope = app.Services.CreateAsyncScope();
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     await db.Database.MigrateAsync();
-    await IdentitySeeder.SeedAsync(scope.ServiceProvider, builder.Configuration);
+    await IdentitySeeder.SeedAsync(scope.ServiceProvider, builder.Configuration, rolesOnly: builder.Environment.IsProduction());
 
     var tenantFactory = scope.ServiceProvider.GetRequiredService<TenantDbContextFactory>();
     var tenantSchemas = await db.Tenants.AsNoTracking()
@@ -119,8 +134,33 @@ if (builder.Configuration.GetValue<bool>("Database:ApplyMigrations"))
         await tenantDb.Database.MigrateAsync();
     }
 }
+if (migrateOnly) { Console.WriteLine("Migraciones HR ProTools aplicadas; no se iniciaron servidor ni workers."); return; }
+if (bootstrapOnly || smtpOnly)
+{
+    if (!builder.Environment.IsProduction() || !Console.IsInputRedirected)
+        throw new InvalidOperationException("El bootstrap requiere Production y entrada estándar protegida desde el wrapper interactivo.");
+    try
+    {
+        var input = new char[4097]; var count = 0;
+        while (count < input.Length) { var character = Console.Read(); if (character is -1 or 10) break; input[count++] = (char)character; }
+        if (count > 4096) throw new InvalidOperationException();
+        using var json = JsonDocument.Parse(new string(input, 0, count));
+        Array.Clear(input);
+        var password = json.RootElement.GetProperty("password").GetString() ?? "";
+        await using var scope = app.Services.CreateAsyncScope();
+        if (bootstrapOnly)
+        {
+            await IdentitySeeder.BootstrapProductionAsync(scope.ServiceProvider, builder.Configuration["BootstrapAdmin:Email"] ?? "", password);
+            Console.WriteLine("Administrador inicial creado; cambio de contraseña obligatorio. No se iniciaron workers.");
+        }
+        else await ProductionSmtpSetup.ConfigureAndTestAsync(scope.ServiceProvider, password);
+    }
+    catch (Exception) { Console.Error.WriteLine("No se completó la configuración protegida. Compruebe su estado; SMTP no se reenvía automáticamente. No se registró la credencial."); Environment.ExitCode = 1; }
+    return;
+}
 
 // Configure the HTTP request pipeline.
+app.UseForwardedHeaders();
 if (app.Environment.IsDevelopment())
 {
     app.UseMigrationsEndPoint();
@@ -135,6 +175,7 @@ else
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
 app.UseAuthentication();
+app.UseMiddleware<InitialPasswordMiddleware>();
 app.UseAuthorization();
 app.UseAntiforgery();
 

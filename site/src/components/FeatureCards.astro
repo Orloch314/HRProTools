@@ -1,0 +1,5 @@
+---
+import { features } from '../data/site';
+import Icon from './Icon.astro';
+---
+<div class="feature-grid">{features.map(feature => <article class="feature-card"><span class="icon-box"><Icon name={feature.icon}/></span><div><h3>{feature.title}</h3><p>{feature.text}</p></div></article>)}</div>

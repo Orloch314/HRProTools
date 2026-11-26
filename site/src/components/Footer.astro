@@ -1,0 +1,4 @@
+---
+import { navigation, contactEmail } from '../data/site';
+---
+<footer class="site-footer"><div class="container footer-top"><a class="brand" href="/"><img src="/images/logo.png" width="64" height="64" alt="Logo HR ProTools"/><span><strong>HR ProTools</strong><small>Gestión de Recursos Humanos</small></span></a><p>Más claridad para tus procesos.<br/> Más tiempo para tu equipo.<br/><a href={`mailto:${contactEmail}`}>{contactEmail}</a></p><nav aria-label="Navegación secundaria">{navigation.slice(1).map(([href,label]) => <a href={href}>{label}</a>)}</nav></div><div class="container footer-bottom"><span>HR ProTools · Gestión de Recursos Humanos</span><div><a href="/privacidad/">Privacidad</a><a href="/terminos/">Términos y condiciones</a><a href="/contacto/">Contacto</a></div></div></footer>
