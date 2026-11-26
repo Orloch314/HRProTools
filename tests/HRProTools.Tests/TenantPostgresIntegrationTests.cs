@@ -11,6 +11,51 @@ namespace HRProTools.Tests;
 public sealed class TenantPostgresIntegrationTests
 {
     [Fact]
+    public async Task GroupCodesAreAutomaticPreserveExistingAndSerializeConcurrentReservations()
+    {
+        var connection = Environment.GetEnvironmentVariable("HRPROTOOLS_TEST_CONNECTION");
+        Assert.False(string.IsNullOrWhiteSpace(connection));
+        ApplicationDbContext GlobalDb() => new(new DbContextOptionsBuilder<ApplicationDbContext>()
+            .UseNpgsql(connection, options => options.MigrationsHistoryTable("__ef_migrations_history", "auth")).Options);
+        var rows = Enumerable.Range(0, 4).Select(_ => new Tenant { Name = "Synthetic group identifier test" }).ToArray();
+        foreach (var row in rows) row.SchemaName = TenantSchemaNames.For(row.Id);
+        await using var db = GlobalDb();
+        await db.Database.MigrateAsync();
+        try
+        {
+            await Assert.ThrowsAsync<InvalidOperationException>(() => TenantIdentifierAllocator.NextGroupCodeAsync(db));
+            int reserved;
+            await using (var transaction = await db.Database.BeginTransactionAsync())
+            {
+                var first = await TenantIdentifierAllocator.NextGroupCodeAsync(db);
+                reserved = int.Parse(first[4..], System.Globalization.CultureInfo.InvariantCulture) + 10;
+                rows[0].Code = "LEGACY-" + rows[0].Id.ToString("N")[..16];
+                rows[1].Code = $"GRP-{reserved:D4}";
+                db.Tenants.AddRange(rows.Take(2));
+                await db.SaveChangesAsync(); await transaction.CommitAsync();
+            }
+            async Task<string> Reserve(Tenant row)
+            {
+                await using var own = GlobalDb();
+                await using var transaction = await own.Database.BeginTransactionAsync();
+                row.Code = await TenantIdentifierAllocator.NextGroupCodeAsync(own);
+                own.Tenants.Add(row); await own.SaveChangesAsync(); await transaction.CommitAsync();
+                return row.Code;
+            }
+            var codes = await Task.WhenAll(Reserve(rows[2]), Reserve(rows[3]));
+            Assert.Equal(new[] { $"GRP-{reserved + 1:D4}", $"GRP-{reserved + 2:D4}" }, codes.Order().ToArray());
+            Assert.Equal(rows[0].Code, await db.Tenants.AsNoTracking().Where(x => x.Id == rows[0].Id).Select(x => x.Code).SingleAsync());
+            var model = new CreateTenantModel { GroupName = "Grupo", CompanyName = "Empresa", TaxId = "RUC", AdministratorName = "Administrador", AdministratorEmail = "synthetic@example.test" };
+            Assert.True(System.ComponentModel.DataAnnotations.Validator.TryValidateObject(model, new(model), [], true));
+        }
+        finally
+        {
+            var ids = rows.Select(x => x.Id).ToArray();
+            await db.Tenants.Where(x => ids.Contains(x.Id)).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
     public async Task TenantMigrationsPersistAndSchemasRemainIsolated()
     {
         var baseConnection = Environment.GetEnvironmentVariable("HRPROTOOLS_TEST_CONNECTION");

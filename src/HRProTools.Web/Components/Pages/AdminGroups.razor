@@ -23,7 +23,6 @@
         <EditForm Model="model" OnValidSubmit="CreateAsync" FormName="create-tenant">
             <DataAnnotationsValidator /><ValidationSummary />
             <div class="form-grid">
-                <label><span>Codigo del grupo</span><InputText @bind-Value="model.GroupCode" /></label>
                 <label><span>Nombre del grupo</span><InputText @bind-Value="model.GroupName" /></label>
                 <label><span>Razon social</span><InputText @bind-Value="model.CompanyName" /></label>
                 <label><span>RUC</span><InputText @bind-Value="model.TaxId" /></label>

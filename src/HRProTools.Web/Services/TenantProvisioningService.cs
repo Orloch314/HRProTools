@@ -12,7 +12,6 @@ namespace HRProTools.Web.Services;
 
 public sealed class CreateTenantModel
 {
-    [Required, MaxLength(32)] public string GroupCode { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string GroupName { get; set; } = string.Empty;
     [Required, MaxLength(200)] public string CompanyName { get; set; } = string.Empty;
     [Required, MaxLength(32)] public string TaxId { get; set; } = string.Empty;
@@ -37,12 +36,17 @@ public sealed class TenantProvisioningService(
     {
         var tenant = new Tenant
         {
-            Code = input.GroupCode.Trim().ToUpperInvariant(),
             Name = input.GroupName.Trim()
         };
         tenant.SchemaName = TenantSchemaNames.For(tenant.Id);
-        globalDb.Tenants.Add(tenant);
-        await globalDb.SaveChangesAsync(cancellationToken);
+        // Reserve the code with the initial row, releasing the lock before schema setup or email.
+        await using (var transaction = await globalDb.Database.BeginTransactionAsync(cancellationToken))
+        {
+            tenant.Code = await TenantIdentifierAllocator.NextGroupCodeAsync(globalDb, cancellationToken);
+            globalDb.Tenants.Add(tenant);
+            await globalDb.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
+        }
 
         ApplicationUser? invited = null;
         try

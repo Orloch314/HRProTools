@@ -4,6 +4,12 @@
 **Fase actual:** Fase 5/5 - cierre funcional del MVP
 **Estado:** MVP funcional implementado; deployment de pruebas autorizado y en ejecución. La preparación y auditorías anteriores se conservan como registros históricos.
 
+## Código automático del grupo — 26/11/2026
+
+- Se elimina `Código del grupo` del formulario Global → Grupos empresariales y del modelo de entrada. El servidor asigna `GRP-0001`, `GRP-0002`, etc., después del mayor correlativo existente; se preservan los códigos históricos y el índice único actual.
+- Reserva transaccional en `platform.tenant` con bloqueo breve, liberado antes de crear el esquema o enviar la invitación. No se agregan campos automáticos visibles ni migraciones; los códigos siguen disponibles como identificadores de consulta en la lista.
+- Prueba PostgreSQL específica: altas concurrentes reciben códigos diferentes y correlativos; códigos previos preservados y formulario válido sin código manual. Se ejecuta solo en QA local, sin crear tenants ficticios en el VPS. Suite Release: **112 superadas, 0 fallidas, 0 omitidas**, 1 min 46 s. El primer intento aislado fue anulado por bloqueo IPC del sandbox; la ejecución completa fuera de esa restricción terminó correctamente.
+
 ## Deployment de pruebas — autorizado y en ejecución — 26/11/2026
 
 - Autorizados commit/push de la rama existente y deployment incremental en el VPS 95.217.134.178, con dominios HR, PostgreSQL 18/main, Nginx y ClamAV existentes. Solo recursos nuevos de HR; ninguna reparación de Eqmatch ni cambios en otras aplicaciones.

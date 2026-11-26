@@ -6,6 +6,17 @@ namespace HRProTools.Web.Services;
 
 public static class TenantIdentifierAllocator
 {
+    public static async Task<string> NextGroupCodeAsync(
+        ApplicationDbContext db,
+        CancellationToken cancellationToken = default)
+    {
+        if (db.Database.CurrentTransaction is null)
+            throw new InvalidOperationException("La asignacion automatica requiere una transaccion activa.");
+        await db.Database.ExecuteSqlRawAsync("LOCK TABLE platform.tenant IN SHARE ROW EXCLUSIVE MODE", cancellationToken);
+        var existing = await db.Tenants.AsNoTracking().Select(x => x.Code).ToListAsync(cancellationToken);
+        return NextPrefixedCode(existing, "GRP");
+    }
+
     public static async Task<string> NextCompanyCodeAsync(
         TenantDbContext db,
         CancellationToken cancellationToken = default)
