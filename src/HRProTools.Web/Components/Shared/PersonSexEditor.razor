@@ -1,0 +1,13 @@
+@inject PersonSexService SexService
+<AuthorizeView Policy="@AppPolicies.TenantAdministration"><Authorized>
+<h3>Actualizar sexo registrado</h3>
+<div class="form-grid"><label><span>Sexo</span><select @bind="sex"><option value="">Seleccione</option><option value="M">Masculino</option><option value="F">Femenino</option></select></label><label><span>Motivo de la actualización</span><input @bind="reason" maxlength="500"/></label></div>
+<button class="btn-secondary" @onclick="SaveAsync">Guardar sexo</button>
+@if(message.Length > 0){<p role="status">@message</p>}
+</Authorized></AuthorizeView>
+@code {
+ [Parameter] public Guid EmploymentId { get; set; }
+ [Parameter] public EventCallback Updated { get; set; }
+ private string sex = "", reason = "", message = "";
+ private async Task SaveAsync() { try { await SexService.UpdateAsync(EmploymentId, sex, reason); message = "Sexo actualizado y cambio registrado. No se recalcularon licencias históricas."; await Updated.InvokeAsync(); } catch(Exception ex) { message = ex.Message; } }
+}

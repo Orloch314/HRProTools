@@ -8,11 +8,57 @@ public class ApplicationDbContext(DbContextOptions<ApplicationDbContext> options
     public DbSet<Tenant> Tenants => Set<Tenant>();
     public DbSet<SmtpConfiguration> SmtpConfigurations => Set<SmtpConfiguration>();
     public DbSet<OperationLog> OperationLogs => Set<OperationLog>();
+    public DbSet<LegalPermissionVersion> LegalPermissionVersions => Set<LegalPermissionVersion>();
+    public DbSet<OfficialHolidayVersion> OfficialHolidayVersions => Set<OfficialHolidayVersion>();
+    public DbSet<OfficialCalendarYear> OfficialCalendarYears => Set<OfficialCalendarYear>();
+    public DbSet<OfficialHolidayRule> OfficialHolidayRules => Set<OfficialHolidayRule>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
         base.OnModelCreating(builder);
         builder.HasDefaultSchema("auth");
+        builder.Entity<OfficialHolidayRule>(e =>
+        {
+            e.ToTable("official_holiday_rule", "platform");
+            e.HasKey(x => x.Code);
+            e.Property(x => x.Code).HasMaxLength(64);
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Calculation).HasMaxLength(24);
+            e.Property(x => x.LegalBasis).HasMaxLength(500);
+            e.Property(x => x.SourceUrl).HasMaxLength(1500);
+        });
+        builder.Entity<LegalPermissionVersion>(e =>
+        {
+            e.ToTable("legal_permission_version", "platform", t => t.HasCheckConstraint("ck_legal_version_dates", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\""));
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Code).HasMaxLength(64);
+            e.Property(x => x.RuleJson).HasColumnType("jsonb");
+            e.Property(x => x.ChangeReason).HasMaxLength(1000);
+            e.Property(x => x.ChangedByUserId).HasMaxLength(450);
+            e.HasIndex(x => new { x.Code, x.Revision }).IsUnique();
+        });
+        builder.Entity<OfficialHolidayVersion>(e =>
+        {
+            e.ToTable("official_holiday_version", "platform");
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.HolidayId, x.Revision }).IsUnique();
+            e.Property(x => x.Name).HasMaxLength(200);
+            e.Property(x => x.Kind).HasMaxLength(24);
+            e.Property(x => x.ChangeKind).HasMaxLength(24);
+            e.Property(x => x.LegalBasis).HasMaxLength(500);
+            e.Property(x => x.SourceUrl).HasMaxLength(1500);
+            e.Property(x => x.Disposition).HasMaxLength(500);
+            e.Property(x => x.ChangeReason).HasMaxLength(1000);
+            e.Property(x => x.ChangedByUserId).HasMaxLength(450);
+        });
+        builder.Entity<OfficialCalendarYear>(e =>
+        {
+            e.ToTable("official_calendar_year", "platform");
+            e.HasKey(x => x.Year);
+            e.Property(x => x.VerificationNote).HasMaxLength(1000);
+            e.Property(x => x.SourceUrl).HasMaxLength(1500);
+            e.Property(x => x.ChangedByUserId).HasMaxLength(450);
+        });
 
         builder.Entity<ApplicationUser>(entity =>
         {

@@ -1,0 +1,23 @@
+<div class="annual-calendar">
+@if(Year is >= 1900 and <= 2200){
+@for(var month = 1; month <= 12; month++)
+{
+    var first = new DateOnly(Year, month, 1);
+    <section class="calendar-month"><h3>@first.ToString("MMMM", Culture)</h3><div class="calendar-grid">
+    @foreach(var label in new[]{"Lu","Ma","Mi","Ju","Vi","Sá","Do"}){<strong>@label</strong>}
+    @for(var blank = 0; blank < ((int)first.DayOfWeek + 6) % 7; blank++){<span></span>}
+    @for(var day = 1; day <= DateTime.DaysInMonth(Year, month); day++)
+    {
+        var date = new DateOnly(Year, month, day);
+        var entries = Days.Where(x => x.Date == date).ToList();
+        <span class="@(entries.Count > 0 ? "holiday-mark" : "")" title="@string.Join(" / ",entries.Select(x => x.Name))">@day</span>
+    }
+    </div></section>
+}
+}else{<p>Seleccione un año entre 1900 y 2200.</p>}
+</div>
+@code {
+    [Parameter] public int Year { get; set; }
+    [Parameter] public IReadOnlyList<CalendarHoliday> Days { get; set; } = [];
+    private static readonly System.Globalization.CultureInfo Culture = new("es-PY");
+}

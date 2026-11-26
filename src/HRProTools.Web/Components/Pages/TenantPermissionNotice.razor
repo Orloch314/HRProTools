@@ -1,0 +1,12 @@
+@page "/tenant/permisos/preaviso"
+@attribute [Authorize(Policy = AppPolicies.HumanResourcesOperations)]
+@inject LegalPermissionReviewService Reviews
+@inject AbsenceService Absences
+<PageTitle>Preaviso verificado - HR ProTools</PageTitle>
+<div class="page-heading"><div><h1>Verificar preaviso de despido</h1><p>Registro de respaldo para búsqueda de empleo. El funcionario presenta su propia solicitud desde el autoservicio.</p></div><a href="tenant/solicitudes">Volver a solicitudes</a></div>
+<section class="panel"><div class="form-grid"><label><span>Funcionario dentro de su alcance</span><select @bind="employmentId"><option value="@Guid.Empty">Seleccione</option>@foreach(var employee in employees){<option value="@employee.Id">@employee.EmployeeNumber · @employee.Name · @employee.Company</option>}</select></label><label><span>Desde</span><InputDate @bind-Value="start"/></label><label><span>Hasta</span><InputDate @bind-Value="end"/></label><label><span>Modalidad exclusiva</span><select @bind="mode"><option value="HOURS">Dos horas diarias</option><option value="DAYS">Un día por semana</option></select></label><label><span>Referencia documental del preaviso notificado</span><input @bind="reference" maxlength="500"/></label></div><button class="btn-primary" @onclick="SaveAsync">Registrar preaviso verificado</button><p role="status">@message</p></section>
+@code{
+ private List<AbsenceEmployeeOption> employees=[];private Guid employmentId; private DateOnly start=DateOnly.FromDateTime(DateTime.Today),end=DateOnly.FromDateTime(DateTime.Today); private string mode="HOURS",reference="",message="";
+ protected override async Task OnInitializedAsync()=>employees=(await Absences.GetOperationalEmployeesAsync()).ToList();
+ private async Task SaveAsync(){try{await Reviews.RegisterNoticeAsync(employmentId,start,end,mode,reference);message="Preaviso y modalidad registrados. No se creó ninguna solicitud en nombre del funcionario.";}catch(Exception ex){message=ex.Message;}}
+}

@@ -47,6 +47,8 @@ public sealed class PermissionReportService(TenantDbContextFactory tenantFactory
             x.Employment.EmployeeNumber,
             Name = x.Employment.Person.GivenNames + " " + x.Employment.Person.FamilyNames,
             x.PermissionType,
+            x.LegalCode,
+            x.LegalSnapshot,
             x.Unit,
             x.StartDate,
             x.EndDate,
@@ -75,8 +77,8 @@ public sealed class PermissionReportService(TenantDbContextFactory tenantFactory
             sheet.Cell(rowNumber, 2).Value = row.Department;
             sheet.Cell(rowNumber, 3).Value = row.EmployeeNumber;
             sheet.Cell(rowNumber, 4).Value = row.Name;
-            sheet.Cell(rowNumber, 5).Value = "Permiso";
-            sheet.Cell(rowNumber, 6).Value = row.PermissionType == PermissionRequestTypes.Paid ? "Con goce" : "Sin goce";
+            sheet.Cell(rowNumber, 5).Value = PermissionRequestService.SnapshotName(row.LegalSnapshot) ?? row.LegalCode ?? "Permiso";
+            sheet.Cell(rowNumber, 6).Value = row.LegalCode is "MATERNIDAD" or "ADOPCION" ? "Régimen legal, sin cálculo IPS" : row.PermissionType == PermissionRequestTypes.Paid ? "Con goce" : "Sin goce";
             sheet.Cell(rowNumber, 7).Value = row.Unit == PermissionRequestUnits.Days ? "Dias" : "Horas";
             sheet.Cell(rowNumber, 8).Value = row.StartDate.ToDateTime(TimeOnly.MinValue);
             sheet.Cell(rowNumber, 9).Value = row.EndDate.ToDateTime(TimeOnly.MinValue);

@@ -45,6 +45,7 @@ public sealed class Position
 
 public sealed class Person
 {
+    public string? Sex { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public string DocumentType { get; set; } = "CI";
     public string DocumentNumber { get; set; } = string.Empty;
@@ -55,6 +56,18 @@ public sealed class Person
     public string Phone { get; set; } = string.Empty;
     public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset UpdatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class PersonSexChange
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PersonId { get; set; }
+    public Person Person { get; set; } = null!;
+    public string? PreviousValue { get; set; }
+    public string NewValue { get; set; } = string.Empty;
+    public string ActorUserId { get; set; } = string.Empty;
+    public string Reason { get; set; } = string.Empty;
+    public DateTimeOffset ChangedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public static class EmploymentStatuses
@@ -151,6 +164,10 @@ public sealed class EmploymentWorkSchedule
 
 public sealed class CompanyHoliday
 {
+    public bool IsActive { get; set; } = true;
+    public string? RemovedByUserId { get; set; }
+    public string? RemovalReason { get; set; }
+    public DateTimeOffset? RemovedAtUtc { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid CompanyId { get; set; }
     public Company Company { get; set; } = null!;
@@ -322,6 +339,7 @@ public sealed class VacationApprovalStepActor
 
 public sealed class VacationRequestDay
 {
+    public Guid? CompanyDayOffRequestId { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid VacationRequestId { get; set; }
     public VacationRequest VacationRequest { get; set; } = null!;
@@ -370,6 +388,12 @@ public static class PermissionRequestStatuses
 
 public sealed class PermissionRequest
 {
+    public string? LegalCode { get; set; }
+    public string? LegalSnapshot { get; set; }
+    public string? LegalInput { get; set; }
+    public string? SexAtSubmission { get; set; }
+    public string LegalReviewStatus { get; set; } = "NOT_REQUIRED";
+    public List<PermissionDocument> Documents { get; set; } = [];
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid EmploymentId { get; set; }
     public Employment Employment { get; set; } = null!;
@@ -399,6 +423,9 @@ public sealed class PermissionRequest
 
 public sealed class PermissionRequestDay
 {
+    public decimal LegalDayFraction { get; set; }
+    public TimeOnly? IntervalStart { get; set; }
+    public TimeOnly? IntervalEnd { get; set; }
     public Guid Id { get; set; } = Guid.NewGuid();
     public Guid PermissionRequestId { get; set; }
     public PermissionRequest PermissionRequest { get; set; } = null!;
@@ -414,6 +441,46 @@ public sealed class PermissionRequestDay
     public string HolidayName { get; set; } = string.Empty;
     public bool CountsAsPermissionDay { get; set; }
     public int EffectiveMinutes { get; set; }
+}
+
+public sealed class PermissionDocument
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PermissionRequestId { get; set; }
+    public PermissionRequest PermissionRequest { get; set; } = null!;
+    public string OriginalFileName { get; set; } = "";
+    public string ContentType { get; set; } = "";
+    public byte[] Content { get; set; } = [];
+    public long Size { get; set; }
+    public string Sha256 { get; set; } = "";
+    public string AntivirusStatus { get; set; } = "";
+    public string UploadedByUserId { get; set; } = "";
+    public DateTimeOffset UploadedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class PermissionLegalReview
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid PermissionRequestId { get; set; }
+    public PermissionRequest PermissionRequest { get; set; } = null!;
+    public string Status { get; set; } = "";
+    public string Comment { get; set; } = "";
+    public string ActorUserId { get; set; } = "";
+    public DateOnly? DocumentDueDate { get; set; }
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
+}
+
+public sealed class EmploymentNotice
+{
+    public Guid Id { get; set; } = Guid.NewGuid();
+    public Guid EmploymentId { get; set; }
+    public Employment Employment { get; set; } = null!;
+    public DateOnly StartDate { get; set; }
+    public DateOnly EndDate { get; set; }
+    public string Mode { get; set; } = "HOURS";
+    public string Reference { get; set; } = "";
+    public string VerifiedByUserId { get; set; } = "";
+    public DateTimeOffset CreatedAtUtc { get; set; } = DateTimeOffset.UtcNow;
 }
 
 public sealed class PermissionApprovalStep

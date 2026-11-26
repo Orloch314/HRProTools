@@ -8,6 +8,10 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<Department> Departments => Set<Department>();
     public DbSet<Position> Positions => Set<Position>();
     public DbSet<Person> People => Set<Person>();
+    public DbSet<PersonSexChange> PersonSexChanges => Set<PersonSexChange>();
+    public DbSet<PermissionDocument> PermissionDocuments => Set<PermissionDocument>();
+    public DbSet<PermissionLegalReview> PermissionLegalReviews => Set<PermissionLegalReview>();
+    public DbSet<EmploymentNotice> EmploymentNotices => Set<EmploymentNotice>();
     public DbSet<Employment> Employments => Set<Employment>();
     public DbSet<EmploymentAssignment> EmploymentAssignments => Set<EmploymentAssignment>();
     public DbSet<SalaryHistory> SalaryHistory => Set<SalaryHistory>();
@@ -16,6 +20,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
     public DbSet<EmploymentWorkSchedule> EmploymentWorkSchedules => Set<EmploymentWorkSchedule>();
     public DbSet<CompanyHoliday> CompanyHolidays => Set<CompanyHoliday>();
     public DbSet<VacationPolicy> VacationPolicies => Set<VacationPolicy>();
+    public DbSet<CompanyDayOffPolicy> CompanyDayOffPolicies => Set<CompanyDayOffPolicy>();
     public DbSet<VacationPeriod> VacationPeriods => Set<VacationPeriod>();
     public DbSet<VacationMovement> VacationMovements => Set<VacationMovement>();
     public DbSet<VacationRequest> VacationRequests => Set<VacationRequest>();
@@ -41,6 +46,53 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
+        builder.Entity<CompanyDayOffPolicy>(e=>
+        {
+            e.ToTable("company_day_off_policy",t=>t.HasCheckConstraint("ck_day_off_quantity","\"Days\" IN (0,0.5,1)"));
+            e.HasKey(x=>x.Id);
+            e.HasIndex(x=>new{x.CompanyId,x.EffectiveFrom}).IsUnique();
+            e.Property(x=>x.Days).HasPrecision(2,1);
+            e.Property(x=>x.CreatedByUserId).HasMaxLength(450);
+            e.HasOne(x=>x.Company).WithMany().HasForeignKey(x=>x.CompanyId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<CompanyHoliday>().Property(x => x.IsActive).HasDefaultValue(true);
+        builder.Entity<CompanyHoliday>().Property(x => x.RemovedByUserId).HasMaxLength(450);
+        builder.Entity<CompanyHoliday>().Property(x => x.RemovalReason).HasMaxLength(500);
+        builder.Entity<PermissionDocument>(entity =>
+        {
+            entity.ToTable("permission_document", t => t.HasCheckConstraint("ck_permission_document_size", "\"Size\" > 0 AND \"Size\" <= 5242880"));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.OriginalFileName).HasMaxLength(255);
+            entity.Property(x => x.ContentType).HasMaxLength(64);
+            entity.Property(x => x.Sha256).HasMaxLength(64);
+            entity.Property(x => x.AntivirusStatus).HasMaxLength(32);
+            entity.Property(x => x.UploadedByUserId).HasMaxLength(450);
+            entity.HasOne(x => x.PermissionRequest).WithMany(x => x.Documents).HasForeignKey(x => x.PermissionRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PermissionLegalReview>(entity =>
+        {
+            entity.ToTable("permission_legal_review");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Status).HasMaxLength(24);
+            entity.Property(x => x.Comment).HasMaxLength(1000);
+            entity.Property(x => x.ActorUserId).HasMaxLength(450);
+            entity.HasOne(x => x.PermissionRequest).WithMany().HasForeignKey(x => x.PermissionRequestId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<EmploymentNotice>(entity =>
+        {
+            entity.ToTable("employment_notice", t => t.HasCheckConstraint("ck_notice_dates", "\"EndDate\" >= \"StartDate\""));
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.Mode).HasMaxLength(16);
+            entity.Property(x => x.Reference).HasMaxLength(500);
+            entity.Property(x => x.VerifiedByUserId).HasMaxLength(450);
+            entity.HasOne(x => x.Employment).WithMany().HasForeignKey(x => x.EmploymentId).OnDelete(DeleteBehavior.Restrict);
+        });
+        builder.Entity<PermissionRequest>().Property(x => x.LegalCode).HasMaxLength(64);
+        builder.Entity<PermissionRequest>().Property(x => x.LegalSnapshot).HasColumnType("jsonb");
+        builder.Entity<PermissionRequest>().Property(x => x.LegalInput).HasColumnType("jsonb");
+        builder.Entity<PermissionRequest>().Property(x => x.SexAtSubmission).HasMaxLength(2);
+        builder.Entity<PermissionRequest>().Property(x => x.LegalReviewStatus).HasMaxLength(24).HasDefaultValue("NOT_REQUIRED");
+        builder.Entity<PermissionRequestDay>().Property(x => x.LegalDayFraction).HasPrecision(12, 8);
         builder.Entity<Company>(entity =>
         {
             entity.ToTable("company");
@@ -79,7 +131,8 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
 
         builder.Entity<Person>(entity =>
         {
-            entity.ToTable("person");
+            entity.ToTable("person", t => t.HasCheckConstraint("ck_person_sex", "\"Sex\" IS NULL OR \"Sex\" IN ('M','F')"));
+            entity.Property(x => x.Sex).HasMaxLength(2);
             entity.HasKey(x => x.Id);
             entity.Property(x => x.DocumentType).HasMaxLength(16);
             entity.Property(x => x.DocumentNumber).HasMaxLength(40);
@@ -89,6 +142,17 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
             entity.Property(x => x.Email).HasMaxLength(320);
             entity.Property(x => x.Phone).HasMaxLength(40);
             entity.HasIndex(x => new { x.DocumentType, x.NormalizedDocumentNumber }).IsUnique();
+        });
+
+        builder.Entity<PersonSexChange>(entity =>
+        {
+            entity.ToTable("person_sex_change");
+            entity.HasKey(x => x.Id);
+            entity.Property(x => x.PreviousValue).HasMaxLength(2);
+            entity.Property(x => x.NewValue).HasMaxLength(2);
+            entity.Property(x => x.ActorUserId).HasMaxLength(450);
+            entity.Property(x => x.Reason).HasMaxLength(500);
+            entity.HasOne(x => x.Person).WithMany().HasForeignKey(x => x.PersonId).OnDelete(DeleteBehavior.Restrict);
         });
 
         builder.Entity<Employment>(entity =>
@@ -326,7 +390,7 @@ public sealed class TenantDbContext(DbContextOptions<TenantDbContext> options) :
                 table.HasCheckConstraint("ck_permission_request_dates", "\"EndDate\" >= \"StartDate\"");
                 table.HasCheckConstraint("ck_permission_request_type", "\"PermissionType\" IN ('PAID', 'UNPAID')");
                 table.HasCheckConstraint("ck_permission_request_unit", "\"Unit\" IN ('DAYS', 'HOURS')");
-                table.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND \"StartDate\" = \"EndDate\")");
+                table.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND (\"StartDate\" = \"EndDate\" OR \"LegalCode\" IN ('LACTANCIA','BUSQUEDA_EMPLEO')))");
             });
             entity.HasKey(x => x.Id);
             entity.Property(x => x.PermissionType).HasMaxLength(12);

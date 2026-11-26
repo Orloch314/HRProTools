@@ -1,0 +1,9 @@
+<section class="legal-duration" aria-label="Duración y límites legales">
+    <h3>Duración y límites legales</h3>
+    <div class="detail-grid"><div><span>Duración legal</span><strong class="legal-duration-value">@Info.Duration</strong></div><div><span>Límite</span><strong>@Info.Period</strong></div><div><span>Unidad</span><strong>@Info.Unit</strong></div><div><span>Remuneración</span><strong>@Info.Remuneration</strong></div><div><span>Revisión</span><strong>@Info.Review</strong></div></div>
+    @foreach(var condition in Info.Conditions){<p>@condition</p>}
+</section>
+@code {
+    [Parameter,EditorRequired] public LegalPermissionType Rule { get; set; } = null!;
+    private LegalDurationInfo Info => LegalDurationInfo.From(Rule);
+}

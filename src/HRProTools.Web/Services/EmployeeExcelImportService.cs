@@ -9,7 +9,7 @@ using HRProTools.Web.Security;
 namespace HRProTools.Web.Services;
 
 public sealed record ImportValidationError(string Sheet, int Row, string Message);
-public sealed record EmployeeImportRow(string EmployeeNumber, string DocumentNumber, string GivenNames, string FamilyNames, DateOnly StartDate, Guid CompanyId, Guid DepartmentId, Guid PositionId, string Email, string Phone, decimal GrossSalary, Guid WorkScheduleId);
+public sealed record EmployeeImportRow(string EmployeeNumber, string DocumentNumber, string GivenNames, string FamilyNames, DateOnly StartDate, Guid CompanyId, Guid DepartmentId, Guid PositionId, string Email, string Phone, decimal GrossSalary, Guid WorkScheduleId, string Sex = "");
 public sealed record VacationImportRow(string EmployeeNumber, DateOnly ReferenceStart, DateOnly ReferenceEnd, DateOnly AccruedOn, decimal LegalDays, decimal AdditionalDays, decimal UsedLegalDays, decimal UsedAdditionalDays);
 public sealed record EmployeeImportPreview(byte[] FileContent, string FileName, string Sha256, string AntivirusStatus, IReadOnlyList<EmployeeImportRow> Employees, IReadOnlyList<VacationImportRow> Vacations, IReadOnlyList<ImportValidationError> Errors)
 {
@@ -24,12 +24,13 @@ public sealed class EmployeeExcelImportService(CurrentTenantService currentTenan
     {
         using var workbook = new XLWorkbook();
         var employees = workbook.Worksheets.Add("Funcionarios");
-        var employeeHeaders = new[] { "Legajo", "Cédula", "Nombres", "Apellidos", "Fecha de ingreso", "Empresa", "Departamento", "Cargo", "Email", "Celular", "Salario bruto", "Jornada laboral" };
+        var employeeHeaders = new[] { "Legajo", "Cédula", "Nombres", "Apellidos", "Fecha de ingreso", "Empresa", "Departamento", "Cargo", "Email", "Celular", "Salario bruto", "Jornada laboral", "Sexo" };
         for (var i = 0; i < employeeHeaders.Length; i++) employees.Cell(1, i + 1).Value = employeeHeaders[i];
         StyleSheet(employees, employeeHeaders.Length);
         employees.Column(5).Style.DateFormat.Format = "dd/mm/yyyy";
         employees.Column(11).Style.NumberFormat.Format = "#,##0";
         employees.SheetView.FreezeRows(1);
+        employees.Range("M2:M500").CreateDataValidation().List("\"M,F\"", true);
 
         var vacations = workbook.Worksheets.Add("Vacaciones");
         var vacationHeaders = new[] { "Legajo", "Período desde", "Período hasta", "Fecha de adquisición", "Días legales reconocidos", "Días adicionales reconocidos", "Días legales utilizados anteriormente", "Días adicionales utilizados anteriormente" };
@@ -86,7 +87,8 @@ public sealed class EmployeeExcelImportService(CurrentTenantService currentTenan
             var person = await db.People.SingleOrDefaultAsync(x => x.DocumentType == "CI" && x.NormalizedDocumentNumber == normalized, ct);
             if (person is null)
             {
-                person = new Person { DocumentType = "CI", DocumentNumber = row.DocumentNumber, NormalizedDocumentNumber = normalized };
+                if (row.Sex is not "M" and not "F") throw new InvalidOperationException("Sexo obligatorio: M o F para una persona nueva.");
+                person = new Person { DocumentType = "CI", DocumentNumber = row.DocumentNumber, NormalizedDocumentNumber = normalized, Sex = row.Sex };
                 db.People.Add(person);
             }
             person.GivenNames = row.GivenNames; person.FamilyNames = row.FamilyNames; person.Email = row.Email; person.Phone = row.Phone; person.UpdatedAtUtc = DateTimeOffset.UtcNow;
@@ -119,11 +121,13 @@ public sealed class EmployeeExcelImportService(CurrentTenantService currentTenan
         var positions = await db.Positions.AsNoTracking().Where(x => x.IsActive).ToListAsync(ct);
         var schedules = await db.WorkSchedules.AsNoTracking().Where(x => x.IsActive).ToListAsync(ct);
         var existing = await db.Employments.AsNoTracking().Select(x => x.EmployeeNumber).ToListAsync(ct);
+        var people = await db.People.AsNoTracking().Select(x => x.NormalizedDocumentNumber).ToListAsync(ct);
+        var hasSexColumn = Text(sheet, 1, 13).Equals("Sexo", StringComparison.OrdinalIgnoreCase);
         var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         var last = sheet.LastRowUsed()?.RowNumber() ?? 1;
         for (var row = 2; row <= last; row++)
         {
-            if (sheet.Row(row).Cells(1, 12).All(x => x.IsEmpty())) continue;
+            if (sheet.Row(row).Cells(1, 13).All(x => x.IsEmpty())) continue;
             try
             {
                 var legajo = Text(sheet, row, 1).ToUpperInvariant();
@@ -142,7 +146,10 @@ public sealed class EmployeeExcelImportService(CurrentTenantService currentTenan
                 var start = sheet.Cell(row, 5).GetDateTime();
                 var salary = sheet.Cell(row, 11).GetValue<decimal>();
                 if (salary <= 0) throw new InvalidOperationException("El salario bruto debe ser mayor que cero.");
-                target.Add(new(legajo, document, names, surnames, DateOnly.FromDateTime(start), company.Id, department.Id, position.Id, Text(sheet, row, 9), Text(sheet, row, 10), salary, schedule.Id));
+                var sex = hasSexColumn ? Text(sheet, row, 13).ToUpperInvariant() : string.Empty;
+                if (sex.Length > 0 && sex is not "M" and not "F") throw new InvalidOperationException("Sexo inválido: utilice M o F.");
+                if (!people.Contains(NormalizeDocument(document)) && (sex.Length == 0 || !hasSexColumn)) throw new InvalidOperationException("La columna Sexo es obligatoria y debe contener M o F para personas nuevas.");
+                target.Add(new(legajo, document, names, surnames, DateOnly.FromDateTime(start), company.Id, department.Id, position.Id, Text(sheet, row, 9), Text(sheet, row, 10), salary, schedule.Id, sex));
             }
             catch (Exception ex) { errors.Add(new("Funcionarios", row, ex.Message)); }
         }

@@ -1,0 +1,5 @@
+@page "/admin/permisos-legales"
+@attribute [Authorize(Policy = AppPolicies.GlobalAdministration)]
+<PageTitle>Permisos legales - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administración global</span><h1>Permisos legales</h1><p>Catálogo común a todos los grupos. Cada publicación conserva las versiones anteriores.</p></div></div>
+<HRProTools.Web.Components.Shared.LegalCatalogAdministration Editable="true"/>

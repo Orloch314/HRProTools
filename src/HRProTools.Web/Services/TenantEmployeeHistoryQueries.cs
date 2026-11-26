@@ -16,7 +16,8 @@ public sealed record EmployeeGeneralData(
     string Company,
     DateOnly StartDate,
     DateOnly? EndDate,
-    string Status);
+    string Status,
+    string? Sex);
 
 public sealed record LaborHistoryRow(
     Guid EmploymentId,
@@ -65,7 +66,8 @@ public static class TenantEmployeeHistoryQueries
                 x.Company.LegalName,
                 x.StartDate,
                 x.EndDate,
-                x.Status))
+                x.Status,
+                x.Person.Sex))
             .SingleOrDefaultAsync(cancellationToken);
 
         if (general is null)

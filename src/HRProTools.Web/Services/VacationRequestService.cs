@@ -49,6 +49,7 @@ public sealed class VacationRequestService(
             x.StartDate <= endDate && x.EndDate >= startDate, cancellationToken))
             throw new InvalidOperationException("El intervalo se superpone con otra solicitud pendiente o aprobada.");
         if (await db.PermissionRequests.AnyAsync(x => x.EmploymentId == link.EmploymentId &&
+            x.LegalCode!=CompanyDayOffService.Code &&
             (x.Status == PermissionRequestStatuses.Pending || x.Status == PermissionRequestStatuses.Approved) &&
             x.StartDate <= endDate && x.EndDate >= startDate, cancellationToken))
             throw new InvalidOperationException("El intervalo se superpone con un permiso pendiente o aprobado.");
@@ -84,6 +85,7 @@ public sealed class VacationRequestService(
                 IsHoliday = x.IsHoliday,
                 HolidayName = x.HolidayName,
                 CountsAsVacationDay = x.CountsAsVacationDay
+                ,CompanyDayOffRequestId = x.CompanyDayOffRequestId
             }).ToList()
         };
         db.VacationRequests.Add(request);

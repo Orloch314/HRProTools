@@ -1,6 +1,7 @@
 @page "/empleado/permisos"
 @attribute [Authorize(Policy = AppPolicies.EmployeeSelfService)]
 @inject PermissionRequestService Requests
+@inject LegalPermissionReviewService LegalReviews
 
 <PageTitle>Mis permisos - HR ProTools</PageTitle>
 
@@ -11,24 +12,30 @@
 
 @if (!string.IsNullOrWhiteSpace(message)) { <div class="notice @(hasError ? "notice-error" : "notice-success")">@message</div> }
 
+@if(available.Count > 0){
 <section class="panel">
     <div class="panel-title"><h2>Nueva solicitud</h2><span>@(unit == PermissionRequestUnits.Days ? "Días" : "Horas")</span></div>
     <div class="form-grid three-columns">
-        <label><span>Clasificación</span><select @bind="permissionType"><option value="PAID">Con goce de salario</option><option value="UNPAID">Sin goce de salario</option></select></label>
-        <label><span>Unidad</span><select @bind="unit" @bind:after="UnitChanged"><option value="DAYS">Por días</option><option value="HOURS">Por horas</option></select></label>
-        <label><span>Fecha inicial</span><InputDate @bind-Value="startDate" /></label>
-        @if (unit == PermissionRequestUnits.Days)
+        <label><span>Tipo de permiso o licencia</span><select @bind="legal.Code" @bind:after="LegalChanged">@foreach(var group in available.GroupBy(x => x.Group)){<optgroup label="@group.Key">@foreach(var type in group){<option value="@type.Code">@type.Name</option>}</optgroup>}</select></label>
+        @if(CurrentRule.Unit is "DAYS_OR_HOURS" or "RECURRENT") { <label><span>Unidad</span><select @bind="unit" @bind:after="UnitChanged"><option value="DAYS">Por días</option><option value="HOURS">Por horas</option></select></label> }
+        <label><span>Fecha inicial</span><InputDate @bind-Value="startDate" @bind-Value:after="DatesChanged" /></label>
+        @if (legal.Code!=CompanyDayOffService.Code && (unit == PermissionRequestUnits.Days || legal.Code is "LACTANCIA" or "BUSQUEDA_EMPLEO"))
         {
-            <label><span>Fecha final</span><InputDate @bind-Value="endDate" /></label>
+            <label><span>Fecha final</span><InputDate @bind-Value="endDate" @bind-Value:after="DatesChanged" /></label>
         }
-        else
+        @if(unit == PermissionRequestUnits.Hours && legal.Code!=CompanyDayOffService.Code)
         {
-            <label><span>Hora inicial</span><input type="time" @bind="startTime" /></label>
-            <label><span>Hora final</span><input type="time" @bind="endTime" /></label>
+            <label><span>Hora inicial</span><input type="time" @bind="startTime" @bind:after="InvalidatePreview" /></label>
+            @if(legal.Code is not "LACTANCIA" and not "BUSQUEDA_EMPLEO"){<label><span>Hora final</span><input type="time" @bind="endTime" @bind:after="InvalidatePreview" /></label>}
         }
         <label class="span-full"><span>Motivo</span><textarea @bind="reason" maxlength="1000"></textarea></label>
     </div>
-    <div class="button-row"><button class="btn-secondary" @onclick="PreviewAsync">Calcular</button><button class="btn-primary" disabled="@(preview is null)" @onclick="SubmitAsync">Presentar solicitud</button></div>
+    @if(legal.Code == "REPOSO_MEDICO") { <div class="notice"><a href="empleado/ausencias">Comunicar reposo médico en Mis ausencias</a>. Se reutiliza el registro de ausencia médica sin crear otro permiso.</div> }
+    else { <HRProTools.Web.Components.Shared.LegalDurationBlock Rule="@CurrentRule"/><HRProTools.Web.Components.Shared.LegalPermissionFields Value="@legal" Rule="@CurrentRule" Changed="RefreshQuotaAsync"/> }
+    @if(quotaLoading){<p role="status">Consultando saldo de esta categoría…</p>}
+    @if(quotaError.Length>0){<div class="notice notice-error" role="status">@quotaError</div>}
+    <HRProTools.Web.Components.Shared.PermissionQuotaPanel Summary="quota"/>
+    @if(legal.Code != "REPOSO_MEDICO"){<div class="button-row"><button class="btn-secondary" disabled="@(busy || quotaLoading)" @onclick="PreviewAsync">Calcular</button><button class="btn-primary" disabled="@(preview is null || busy || quotaLoading || quotaError.Length>0 || quota?.Exhausted==true)" @onclick="SubmitAsync">Presentar solicitud</button></div>}
     @if (preview is not null)
     {
         <div class="detail-grid compact">
@@ -43,6 +50,7 @@
         </tbody></table></div>
     }
 </section>
+}else{<div class="notice">No hay categorías activas publicadas para nuevas solicitudes.</div>}
 
 <section class="panel">
     <div class="panel-title"><h2>Historial de permisos</h2><span>@items.Count</span></div>
@@ -50,7 +58,7 @@
     @if (items.Count == 0) { <tr><td colspan="6" class="empty">Todavía no existen solicitudes de permiso.</td></tr> }
     @foreach (var item in items)
     {
-        <tr><td>@TypeText(item.PermissionType)<small>@item.Reason</small></td><td>@ItemInterval(item)</td><td>@ItemQuantity(item)</td><td>@StatusText(item.Status)</td><td>@(string.IsNullOrWhiteSpace(item.PendingLevel) ? "—" : item.PendingLevel)</td><td><button class="link-button" @onclick="() => selected = item">Detalle</button></td></tr>
+        <tr><td>@(item.LegalName ?? TypeText(item.PermissionType))<small>@item.Reason</small></td><td>@ItemInterval(item)</td><td>@ItemQuantity(item)</td><td>@StatusText(item.Status)</td><td>@(string.IsNullOrWhiteSpace(item.PendingLevel) ? "—" : item.PendingLevel)</td><td><button class="link-button" @onclick="() => selected = item">Detalle</button></td></tr>
     }
     </tbody></table></div>
 </section>
@@ -59,6 +67,7 @@
 {
     <section class="panel editor-accent">
         <div class="panel-title"><div><h2>Detalle del circuito</h2><p>@selected.Reason</p></div><button class="link-button" @onclick="() => selected = null">Cerrar</button></div>
+        <HRProTools.Web.Components.Shared.LegalPermissionPanel RequestId="@selected.Id" Self="true"/>
         <div class="table-wrap"><table><thead><tr><th>Orden</th><th>Nivel</th><th>Estado</th><th>Decidido por</th><th>Comentario</th></tr></thead><tbody>
         @foreach (var step in selected.History)
         {
@@ -74,12 +83,21 @@
 }
 
 @code {
-    private readonly DateOnly today = DateOnly.FromDateTime(DateTime.Today);
+    private readonly DateOnly today = GlobalReferenceQueries.Today;
     private DateOnly startDate;
     private DateOnly endDate;
     private TimeOnly startTime = new(8, 0);
     private TimeOnly endTime = new(9, 0);
     private string permissionType = PermissionRequestTypes.Paid;
+    private LegalPermissionInput legal = new();
+    private PermissionQuotaSummary? quota;
+    private string quotaError="";
+    private bool quotaLoading,busy;
+    private int quotaGeneration;
+    private Guid requestId = Guid.NewGuid();
+    private List<LegalPermissionType> available = [];
+    private LegalPermissionType CurrentRule => available.Single(x => x.Code == legal.Code);
+    private async Task LegalChanged() { var code = legal.Code; legal = new() { Code = code, Variant=code==CompanyDayOffService.Code?"FIRST_HALF":"ORDINARY", DailyMinutes = code == "BUSQUEDA_EMPLEO" ? LegalPermissionLimits.SearchDailyMinutes : LegalPermissionLimits.LactationInitialMinutes }; unit = CurrentRule.Unit is "HOURS" or "MINUTES" or "RECURRENT_MINUTES" ? PermissionRequestUnits.Hours : PermissionRequestUnits.Days; if(code==CompanyDayOffService.Code)endDate=startDate;preview = null; requestId = Guid.NewGuid(); await RefreshQuotaAsync(); }
     private string unit = PermissionRequestUnits.Days;
     private string reason = string.Empty;
     private string cancellationReason = string.Empty;
@@ -93,24 +111,57 @@
     {
         startDate = today;
         endDate = today;
+        available = await Requests.GetAvailableLegalTypesAsync();
+        if(available.Count > 0){ if(!available.Any(x => x.Code == legal.Code)) legal.Code = available[0].Code; await LegalChanged(); }
         await LoadAsync();
     }
 
-    private void UnitChanged()
+    private async Task UnitChanged()
     {
         preview = null;
-        if (unit == PermissionRequestUnits.Hours) endDate = startDate;
+        if (unit == PermissionRequestUnits.Hours && legal.Code is not "LACTANCIA" and not "BUSQUEDA_EMPLEO") endDate = startDate;
+        await RefreshQuotaAsync();
+    }
+
+    private void InvalidatePreview()=>preview=null;
+    private async Task DatesChanged()
+    {
+        available=await Requests.GetAvailableLegalTypesAsync(date:startDate);
+        if(!available.Any(x=>x.Code==legal.Code))
+        {
+            preview=null;quota=null;
+            if(available.Count>0){legal.Code=available[0].Code;await LegalChanged();}
+            message="La categoría anterior no está disponible para la fecha seleccionada. Seleccione una categoría vigente.";hasError=false;
+            return;
+        }
+        if(legal.Code==CompanyDayOffService.Code)
+        {
+            endDate=startDate;
+            unit=CurrentRule.Unit=="HOURS"?"HOURS":"DAYS";
+        }
+        if(unit==PermissionRequestUnits.Hours && legal.Code is not "LACTANCIA" and not "BUSQUEDA_EMPLEO")endDate=startDate;
+        await RefreshQuotaAsync();
+    }
+    private async Task RefreshQuotaAsync()
+    {
+        var generation=++quotaGeneration;preview=null;quota=null;quotaError="";quotaLoading=true;
+        try{if(legal.Code!="REPOSO_MEDICO"){var result=await LegalReviews.GetSelfQuotaDetailAsync(legal with{},startDate,unit=="HOURS"&&legal.Code is not "LACTANCIA" and not "BUSQUEDA_EMPLEO"?startDate:endDate,unit);if(generation==quotaGeneration)quota=result;}}
+        catch(Exception ex){if(generation==quotaGeneration)quotaError=ex.Message;}
+        finally{if(generation==quotaGeneration)quotaLoading=false;}
     }
 
     private async Task PreviewAsync()
     {
         await ExecuteAsync(async () =>
         {
-            if (unit == PermissionRequestUnits.Hours) endDate = startDate;
-            preview = await Requests.PreviewSelfAsync(unit, startDate, endDate,
+            if (unit == PermissionRequestUnits.Hours && legal.Code is not "LACTANCIA" and not "BUSQUEDA_EMPLEO") endDate = startDate;
+            await RefreshQuotaAsync();
+            var generation=quotaGeneration;
+            var result = await Requests.PreviewSelfAsync(unit, startDate, endDate,
                 unit == PermissionRequestUnits.Hours ? startTime : null,
-                unit == PermissionRequestUnits.Hours ? endTime : null);
-            message = $"Cálculo correcto: {Quantity(preview)}.";
+                unit == PermissionRequestUnits.Hours ? endTime : null, legal: legal);
+            if(generation!=quotaGeneration)throw new InvalidOperationException("El período cambió; vuelva a calcular.");
+            preview=result;message = $"Cálculo correcto: {Quantity(result)}.";
         });
     }
 
@@ -118,14 +169,16 @@
     {
         await ExecuteAsync(async () =>
         {
-            await Requests.CreateSelfAsync(Guid.NewGuid(), permissionType, unit, startDate, endDate,
+            await Requests.CreateSelfAsync(requestId, permissionType, unit, startDate, endDate,
                 unit == PermissionRequestUnits.Hours ? startTime : null,
                 unit == PermissionRequestUnits.Hours ? endTime : null,
-                reason);
+                reason, legal: legal);
+            requestId = Guid.NewGuid();
             preview = null;
             reason = string.Empty;
             message = "Solicitud presentada al primer nivel de aprobación.";
             await LoadAsync();
+            await RefreshQuotaAsync();
         });
     }
 
@@ -138,15 +191,16 @@
             cancellationReason = string.Empty;
             message = "Solicitud cancelada. El historial de decisiones fue conservado.";
             await LoadAsync();
+            await RefreshQuotaAsync();
         });
     }
 
     private async Task LoadAsync() => items = await Requests.GetSelfRequestsAsync();
-    private async Task ExecuteAsync(Func<Task> action) { try { hasError = false; await action(); } catch (Exception ex) { preview = null; hasError = true; message = ex.Message; } }
+    private async Task ExecuteAsync(Func<Task> action) { if(busy)return;busy=true;try { hasError = false; await action(); } catch (Exception ex) { preview = null; hasError = true; message = ex.Message; } finally{busy=false;} }
     private static string Quantity(PermissionIntervalCalculation value) => value.Unit == PermissionRequestUnits.Hours ? FormatMinutes(value.RequestedMinutes) : $"{value.RequestedDays} día(s)";
-    private static string Interval(PermissionIntervalCalculation value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
+    private static string Interval(PermissionIntervalCalculation value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
     private static string ItemQuantity(PermissionRequestListItem value) => value.Unit == PermissionRequestUnits.Hours ? FormatMinutes(value.RequestedMinutes) : $"{value.RequestedDays} día(s)";
-    private static string ItemInterval(PermissionRequestListItem value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
+    private static string ItemInterval(PermissionRequestListItem value) => value.Unit == PermissionRequestUnits.Hours ? $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy} {value.StartTime:HH\\:mm}–{value.EndTime:HH\\:mm}" : $"{value.StartDate:dd/MM/yyyy}–{value.EndDate:dd/MM/yyyy}";
     private static string FormatMinutes(int minutes) => $"{minutes / 60} h {minutes % 60:D2} min";
     private static string DayCondition(PermissionDateCalculation day) => day.IsHoliday ? $"Feriado: {day.HolidayName}" : day.IsScheduledWorkday ? "Laboral" : "Descanso";
     private static string TypeText(string value) => value == PermissionRequestTypes.Paid ? "Con goce" : "Sin goce";

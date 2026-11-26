@@ -39,6 +39,24 @@ public static class Phase5EndpointExtensions
             if (document.AntivirusStatus != FileScanStatuses.Clean) return Results.Problem("El documento no fue validado como seguro.", statusCode: StatusCodes.Status423Locked);
             return Results.File(document.Content, document.ContentType, document.OriginalFileName, enableRangeProcessing: false);
         }).RequireAuthorization(AppPolicies.HumanResourcesOperations);
+        endpoints.MapGet("/tenant/permisos/documentos/{documentId:guid}", async (
+            Guid documentId, HttpContext http, ApplicationDbContext global, TenantDbContextFactory factory, CancellationToken ct) =>
+        {
+            var userId = http.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? throw new UnauthorizedAccessException();
+            var tenant = await (from user in global.Users.AsNoTracking()
+                                join item in global.Tenants.AsNoTracking() on user.TenantId equals item.Id
+                                where user.Id == userId && user.IsActive && item.Status == TenantStatuses.Active
+                                select item).SingleAsync(ct);
+            await using var db = factory.Create(tenant.SchemaName);
+            var companies = await OperationalAlertService.HumanResourcesCompanyIdsAsync(db, userId, ct);
+            var document = await db.PermissionDocuments.AsNoTracking().Where(x => x.Id == documentId && companies.Contains(x.PermissionRequest.CompanyId))
+                .Select(x => new { x.Content, x.ContentType, x.OriginalFileName, x.AntivirusStatus }).SingleOrDefaultAsync(ct);
+            if (document is null) return Results.NotFound();
+            if (document.AntivirusStatus != FileScanStatuses.Clean) return Results.Problem("El documento no fue validado como seguro.", statusCode: StatusCodes.Status423Locked);
+            http.Response.Headers.CacheControl = "no-store";
+            http.Response.Headers["X-Content-Type-Options"] = "nosniff";
+            return Results.File(document.Content, document.ContentType, document.OriginalFileName);
+        }).RequireAuthorization(AppPolicies.HumanResourcesOperations);
         return endpoints;
     }
 }

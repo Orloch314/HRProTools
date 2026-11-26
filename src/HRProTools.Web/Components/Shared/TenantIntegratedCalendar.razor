@@ -1,0 +1,31 @@
+@inject TenantCalendarService Calendar
+@inject WorkCalendarService Work
+@inject TenantDataService Data
+<section class="panel">
+    <h2>Calendario integrado</h2><p>Feriados oficiales (solo lectura) y adicionales de empresa. Una coincidencia se computa una sola vez.</p>
+    @if(message.Length > 0){<div class="notice @(error ? "notice-error" : "notice-success")">@message</div>}
+    <div class="form-grid"><label><span>Año</span><input type="number" min="1900" max="2200" @bind="year" @bind:after="LoadAsync"/></label><label><span>Empresa</span><select @bind="company" @bind:after="LoadAsync">@foreach(var x in companies){<option value="@x.Id">@x.LegalName</option>}</select></label><label><span>Origen</span><select @bind="origin"><option value="">Todos</option><option value="OFFICIAL">Oficial</option><option value="COMPANY">Adicional de empresa</option></select></label></div>
+    @if(result is not null){
+        <div class="notice"><strong>@(result.Confirmed ? "Calendario oficial confirmado" : "Feriados conocidos disponibles · verificación anual pendiente")</strong><p>@result.Verification</p></div>
+        @if(result.AffectedRequests > 0){<div class="notice notice-error">@result.AffectedRequests solicitud(es) con fechas futuras conservan un calendario diferente al actual. Revise cada caso; sus instantáneas, aprobaciones y reservas no se recalcularon.</div>}
+        <AnnualHolidayCalendar Year="year" Days="@Visible"/>
+        <div class="table-wrap"><table><thead><tr><th>Fecha efectiva</th><th>Nombre / origen</th><th>Fecha original</th><th></th></tr></thead><tbody>
+        @foreach(var x in Visible){<tr><td>@x.Date.ToString("dd/MM/yyyy")</td><td>@x.Name<small>@(x.Origin == "OFFICIAL" ? "Oficial · solo lectura" : "Adicional de empresa")</small><small>@x.Confirmation</small>@if(x.Coincides){<small>Coincide: se computa una sola fecha</small>}</td><td>@x.OriginalDate.ToString("dd/MM/yyyy")</td><td>@if(x.Origin == "OFFICIAL"){<a href="@x.Source" target="_blank" rel="noopener">Fuente</a>}else{<button class="link-button" @onclick="() => removing = x.Id">Quitar</button>}</td></tr>}
+        @if(Visible.Count == 0){<tr><td colspan="4">No hay feriados cargados para este filtro.</td></tr>}
+        </tbody></table></div>
+    }
+</section>
+<section class="panel"><div class="panel-title"><h2>Feriados adicionales</h2><button class="btn-secondary" @onclick="() => adding = !adding">@(adding ? "Cerrar" : "Agregar feriado")</button></div>
+@if(adding){<div class="form-grid"><label><span>Empresa</span><select @bind="company" @bind:after="LoadAsync">@foreach(var x in companies.Where(x=>x.IsActive)){<option value="@x.Id">@x.LegalName</option>}</select></label><label><span>Fecha</span><InputDate @bind-Value="date"/></label><label><span>Descripción</span><input maxlength="200" @bind="name"/></label></div><button class="btn-primary" @onclick="SaveAsync">Guardar adicional</button>}
+@if(removing.HasValue){<label><span>Motivo de baja del adicional</span><input @bind="reason" maxlength="500"/></label><div class="button-row"><button class="btn-danger" @onclick="RemoveAsync">Confirmar baja lógica</button><button class="btn-secondary" @onclick="() => removing = null">Cancelar</button></div>}
+</section>
+@code{
+ private int year = GlobalReferenceQueries.Today.Year;
+ private Guid company; private List<Company> companies = []; private IntegratedCalendar? result; private string origin = "", message = "", name = "", reason = ""; private bool error, adding; private Guid? removing; private DateOnly date = GlobalReferenceQueries.Today;
+ private IReadOnlyList<CalendarHoliday> Visible => result?.Days.Where(x=>origin.Length==0 || x.Origin==origin).ToList() ?? [];
+ protected override async Task OnInitializedAsync(){companies=await Data.GetCompaniesAsync(false);company=companies.FirstOrDefault()?.Id??Guid.Empty;await LoadAsync();}
+ private async Task LoadAsync(){try{if(company!=Guid.Empty) result=await Calendar.GetAsync(year,company);}catch(Exception ex){message=ex.Message;error=true;}}
+ private async Task SaveAsync(){if(await RunAsync(()=>Work.SaveHolidayAsync(company,date,name),"Adicional guardado. Las coincidencias no duplican días.")){adding=false;name="";year=date.Year;await LoadAsync();}}
+ private async Task RemoveAsync(){if(await RunAsync(()=>Work.RemoveHolidayAsync(removing!.Value,reason),"Adicional desactivado. Las solicitudes existentes conservan sus instantáneas."))removing=null;}
+ private async Task<bool> RunAsync(Func<Task> action,string ok){try{await action();message=ok;error=false;await LoadAsync();return true;}catch(Exception ex){message=ex.Message;error=true;return false;}}
+}

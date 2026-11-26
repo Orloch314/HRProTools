@@ -46,7 +46,7 @@
                         <td>@day.Date.ToString("dd/MM/yyyy")</td>
                         <td>@day.WorkScheduleName</td>
                         <td>@(day.IsScheduledWorkday ? "Sí" : "Descanso semanal")</td>
-                        <td>@(day.IsHoliday ? day.HolidayName : "-")</td>
+                        <td>@(day.IsHoliday || day.CompanyDayOffRequestId.HasValue ? day.HolidayName : "-")</td>
                         <td><span class="status @(day.CountsAsVacationDay ? "active" : "inactive")">@(day.CountsAsVacationDay ? "Reserva 1 día" : "No descuenta")</span></td>
                     </tr>
                 }

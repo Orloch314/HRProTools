@@ -79,10 +79,15 @@ builder.Services.AddSingleton<IFileSecurityScanner, ClamAvFileSecurityScanner>()
 builder.Services.AddScoped<TenantBrandingService>();
 builder.Services.AddScoped<EmployeeAccessService>();
 builder.Services.AddScoped<WorkCalendarService>();
+builder.Services.AddScoped<CompanyDayOffService>();
 builder.Services.AddScoped<VacationService>();
 builder.Services.AddScoped<VacationWorkflowService>();
 builder.Services.AddScoped<VacationRequestService>();
 builder.Services.AddScoped<PermissionRequestService>();
+builder.Services.AddScoped<PersonSexService>();
+builder.Services.AddScoped<LegalPermissionReviewService>();
+builder.Services.AddScoped<ReferenceAdministrationService>();
+builder.Services.AddScoped<TenantCalendarService>();
 builder.Services.AddScoped<AbsenceService>();
 builder.Services.AddScoped<OperationalAlertService>();
 builder.Services.AddScoped<RoleDashboardService>();

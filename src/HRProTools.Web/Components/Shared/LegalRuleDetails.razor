@@ -1,0 +1,8 @@
+<LegalDurationBlock Rule="Rule"/>
+<div class="detail-grid">
+ <div><span>Código</span><strong>@Rule.Code</strong></div><div><span>Nombre / grupo</span><strong>@Rule.Name · @Rule.Group</strong></div>
+ <div><span>Descripción</span><strong>@Rule.Description</strong></div><div><span>Fuente</span><a href="@Rule.SourceUrl" target="_blank" rel="noopener">@Rule.Law · Art. @Rule.Article</a></div>
+ <div><span>Elegibilidad</span><strong>@Rule.Beneficiaries · @Rule.Requirements</strong></div><div><span>Documentación</span><strong>@Rule.Documentation</strong></div><div><span>Preaviso</span><strong>@Rule.Notice</strong></div><div><span>Remuneración</span><strong>@Rule.Remuneration</strong></div>
+ <div><span>Naturaleza</span><strong>@(Rule.Protected ? "Obligatorio · revisión HR" : "Discrecional · circuito habitual")</strong></div>
+</div>
+@code { [Parameter, EditorRequired] public LegalPermissionType Rule { get; set; } = null!; }

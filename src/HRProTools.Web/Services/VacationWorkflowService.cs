@@ -184,7 +184,8 @@ public sealed class VacationWorkflowService(
         Guid tenantId,
         Guid employmentId,
         string requesterUserId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool legalReviewOnly = false)
     {
         var assignment = await db.EmploymentAssignments.AsNoTracking()
             .Where(x => x.EmploymentId == employmentId && x.ValidTo == null)
@@ -197,6 +198,7 @@ public sealed class VacationWorkflowService(
         var steps = new List<ApprovalStepSnapshot>();
         foreach (var level in levels)
         {
+            if (legalReviewOnly && level.Type != VacationApprovalLevelTypes.HumanResources) continue;
             List<string> actorIds;
             if (level.Type == VacationApprovalLevelTypes.Approver)
             {

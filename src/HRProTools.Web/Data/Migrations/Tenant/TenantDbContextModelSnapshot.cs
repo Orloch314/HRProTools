@@ -336,6 +336,41 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("company", (string)null);
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.CompanyDayOffPolicy", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("CreatedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<decimal>("Days")
+                        .HasPrecision(2, 1)
+                        .HasColumnType("numeric(2,1)");
+
+                    b.Property<DateOnly>("EffectiveFrom")
+                        .HasColumnType("date");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "EffectiveFrom")
+                        .IsUnique();
+
+                    b.ToTable("company_day_off_policy", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_day_off_quantity", "\"Days\" IN (0,0.5,1)");
+                        });
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.CompanyHoliday", b =>
                 {
                     b.Property<Guid>("Id")
@@ -351,10 +386,26 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Property<DateOnly>("Date")
                         .HasColumnType("date");
 
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true);
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
+
+                    b.Property<string>("RemovalReason")
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateTimeOffset?>("RemovedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("RemovedByUserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
 
                     b.HasKey("Id");
 
@@ -521,6 +572,49 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("employment_assignment", null, t =>
                         {
                             t.HasCheckConstraint("ck_assignment_dates", "\"ValidTo\" IS NULL OR \"ValidTo\" >= \"ValidFrom\"");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.EmploymentNotice", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("EmploymentId")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateOnly>("EndDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("Mode")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)");
+
+                    b.Property<string>("Reference")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<DateOnly>("StartDate")
+                        .HasColumnType("date");
+
+                    b.Property<string>("VerifiedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("EmploymentId");
+
+                    b.ToTable("employment_notice", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_notice_dates", "\"EndDate\" >= \"StartDate\"");
                         });
                 });
 
@@ -816,6 +910,97 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.ToTable("permission_approval_step_actor", (string)null);
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionDocument", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("AntivirusStatus")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)");
+
+                    b.Property<byte[]>("Content")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("OriginalFileName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<Guid>("PermissionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Sha256")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<long>("Size")
+                        .HasColumnType("bigint");
+
+                    b.Property<DateTimeOffset>("UploadedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("UploadedByUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionRequestId");
+
+                    b.ToTable("permission_document", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_permission_document_size", "\"Size\" > 0 AND \"Size\" <= 5242880");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionLegalReview", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<string>("Comment")
+                        .IsRequired()
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)");
+
+                    b.Property<DateTimeOffset>("CreatedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateOnly?>("DocumentDueDate")
+                        .HasColumnType("date");
+
+                    b.Property<Guid>("PermissionRequestId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PermissionRequestId");
+
+                    b.ToTable("permission_legal_review", (string)null);
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.PermissionRequest", b =>
                 {
                     b.Property<Guid>("Id")
@@ -864,6 +1049,23 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Property<TimeOnly?>("EndTime")
                         .HasColumnType("time without time zone");
 
+                    b.Property<string>("LegalCode")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("LegalInput")
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("LegalReviewStatus")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(24)
+                        .HasColumnType("character varying(24)")
+                        .HasDefaultValue("NOT_REQUIRED");
+
+                    b.Property<string>("LegalSnapshot")
+                        .HasColumnType("jsonb");
+
                     b.Property<string>("PermissionType")
                         .IsRequired()
                         .HasMaxLength(12)
@@ -884,6 +1086,10 @@ namespace HRProTools.Web.Data.Migrations.Tenant
 
                     b.Property<int>("RequestedMinutes")
                         .HasColumnType("integer");
+
+                    b.Property<string>("SexAtSubmission")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
 
                     b.Property<DateOnly>("StartDate")
                         .HasColumnType("date");
@@ -911,7 +1117,7 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         {
                             t.HasCheckConstraint("ck_permission_request_dates", "\"EndDate\" >= \"StartDate\"");
 
-                            t.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND \"StartDate\" = \"EndDate\")");
+                            t.HasCheckConstraint("ck_permission_request_quantity", "(\"Unit\" = 'DAYS' AND \"RequestedDays\" > 0 AND \"RequestedMinutes\" = 0 AND \"StartTime\" IS NULL AND \"EndTime\" IS NULL) OR (\"Unit\" = 'HOURS' AND \"RequestedDays\" = 0 AND \"RequestedMinutes\" > 0 AND \"StartTime\" IS NOT NULL AND \"EndTime\" IS NOT NULL AND (\"StartDate\" = \"EndDate\" OR \"LegalCode\" IN ('LACTANCIA','BUSQUEDA_EMPLEO')))");
 
                             t.HasCheckConstraint("ck_permission_request_type", "\"PermissionType\" IN ('PAID', 'UNPAID')");
 
@@ -945,11 +1151,21 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .HasMaxLength(160)
                         .HasColumnType("character varying(160)");
 
+                    b.Property<TimeOnly?>("IntervalEnd")
+                        .HasColumnType("time without time zone");
+
+                    b.Property<TimeOnly?>("IntervalStart")
+                        .HasColumnType("time without time zone");
+
                     b.Property<bool>("IsHoliday")
                         .HasColumnType("boolean");
 
                     b.Property<bool>("IsScheduledWorkday")
                         .HasColumnType("boolean");
+
+                    b.Property<decimal>("LegalDayFraction")
+                        .HasPrecision(12, 8)
+                        .HasColumnType("numeric(12,8)");
 
                     b.Property<Guid>("PermissionRequestId")
                         .HasColumnType("uuid");
@@ -1023,6 +1239,10 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .HasMaxLength(40)
                         .HasColumnType("character varying(40)");
 
+                    b.Property<string>("Sex")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
                     b.Property<DateTimeOffset>("UpdatedAtUtc")
                         .HasColumnType("timestamp with time zone");
 
@@ -1031,7 +1251,48 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.HasIndex("DocumentType", "NormalizedDocumentNumber")
                         .IsUnique();
 
-                    b.ToTable("person", (string)null);
+                    b.ToTable("person", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_person_sex", "\"Sex\" IS NULL OR \"Sex\" IN ('M','F')");
+                        });
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PersonSexChange", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("ActorUserId")
+                        .IsRequired()
+                        .HasMaxLength(450)
+                        .HasColumnType("character varying(450)");
+
+                    b.Property<DateTimeOffset>("ChangedAtUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("NewValue")
+                        .IsRequired()
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<Guid>("PersonId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("PreviousValue")
+                        .HasMaxLength(2)
+                        .HasColumnType("character varying(2)");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PersonId");
+
+                    b.ToTable("person_sex_change", (string)null);
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.Position", b =>
@@ -1566,6 +1827,9 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uuid");
 
+                    b.Property<Guid?>("CompanyDayOffRequestId")
+                        .HasColumnType("uuid");
+
                     b.Property<bool>("CountsAsVacationDay")
                         .HasColumnType("boolean");
 
@@ -1747,6 +2011,17 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("Absence");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.CompanyDayOffPolicy", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Company", "Company")
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Company");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.CompanyHoliday", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Company", "Company")
@@ -1826,6 +2101,17 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("Position");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.EmploymentNotice", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Employment", "Employment")
+                        .WithMany()
+                        .HasForeignKey("EmploymentId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Employment");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.EmploymentWorkSchedule", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Employment", "Employment")
@@ -1877,6 +2163,28 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("PermissionApprovalStep");
                 });
 
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionDocument", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.PermissionRequest", "PermissionRequest")
+                        .WithMany("Documents")
+                        .HasForeignKey("PermissionRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PermissionRequest");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PermissionLegalReview", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.PermissionRequest", "PermissionRequest")
+                        .WithMany()
+                        .HasForeignKey("PermissionRequestId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("PermissionRequest");
+                });
+
             modelBuilder.Entity("HRProTools.Web.Data.PermissionRequest", b =>
                 {
                     b.HasOne("HRProTools.Web.Data.Employment", "Employment")
@@ -1897,6 +2205,17 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                         .IsRequired();
 
                     b.Navigation("PermissionRequest");
+                });
+
+            modelBuilder.Entity("HRProTools.Web.Data.PersonSexChange", b =>
+                {
+                    b.HasOne("HRProTools.Web.Data.Person", "Person")
+                        .WithMany()
+                        .HasForeignKey("PersonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("Person");
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.Position", b =>
@@ -2059,6 +2378,8 @@ namespace HRProTools.Web.Data.Migrations.Tenant
                     b.Navigation("ApprovalSteps");
 
                     b.Navigation("Dates");
+
+                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("HRProTools.Web.Data.VacationApprovalStep", b =>

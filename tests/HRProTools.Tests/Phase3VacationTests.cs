@@ -110,6 +110,7 @@ public sealed class Phase3VacationTests
         using (var workbook = new XLWorkbook(new MemoryStream(EmployeeExcelImportService.CreateTemplate())))
         {
             var e = workbook.Worksheet("Funcionarios");
+            e.Cell("M2").Value = "F";
             e.Cell("A2").Value = "LEG-900"; e.Cell("B2").Value = "900"; e.Cell("C2").Value = "Importada"; e.Cell("D2").Value = "Prueba"; e.Cell("E2").Value = new DateTime(2023, 1, 1);
             e.Cell("F2").Value = "EMP-0001"; e.Cell("G2").Value = "DEP-0001"; e.Cell("H2").Value = "CAR-0001"; e.Cell("I2").Value = "importada@example.test"; e.Cell("J2").Value = "0981000000"; e.Cell("K2").Value = 5_000_000; e.Cell("L2").Value = "Jornada importación";
             var v = workbook.Worksheet("Vacaciones");
@@ -130,6 +131,15 @@ public sealed class Phase3VacationTests
         Assert.Contains(missingSchedule.Errors, x => x.Message.Contains("jornada", StringComparison.OrdinalIgnoreCase));
 
         var preview = await importer.ValidateAsync("import.xlsx", bytes);
+        foreach (var invalidSex in new[] { "", "ND", "desconocido" })
+        {
+            using var badBook = new XLWorkbook(new MemoryStream(bytes));
+            badBook.Worksheet("Funcionarios").Cell("M2").Value = invalidSex;
+            using var badStream = new MemoryStream(); badBook.SaveAs(badStream);
+            var badPreview = await importer.ValidateAsync("sexo-invalido.xlsx", badStream.ToArray());
+            Assert.False(badPreview.IsValid);
+            Assert.Contains(badPreview.Errors, x => x.Row == 2 && x.Message.Contains("Sexo", StringComparison.OrdinalIgnoreCase));
+        }
         Assert.True(preview.IsValid, string.Join("; ", preview.Errors.Select(x => x.Message)));
         await importer.ConfirmAsync(preview);
         await using (var verify = Create(Connection(), fixture.Schema))
@@ -138,6 +148,7 @@ public sealed class Phase3VacationTests
             Assert.Equal(2, await verify.VacationMovements.CountAsync(x => x.Type == VacationMovementTypes.Credit));
             Assert.Equal(2, await verify.VacationMovements.CountAsync(x => x.Type == VacationMovementTypes.Consume));
             Assert.Single(await verify.Employments.ToListAsync());
+            Assert.Equal("F", (await verify.People.SingleAsync()).Sex);
         }
         var duplicate = await importer.ValidateAsync("import.xlsx", bytes);
         Assert.False(duplicate.IsValid);

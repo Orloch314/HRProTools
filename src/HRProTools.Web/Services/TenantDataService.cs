@@ -24,6 +24,8 @@ public sealed class CatalogForm
 
 public sealed class EmployeeForm
 {
+    [Required(ErrorMessage = "Seleccione el sexo."), RegularExpression("^[MF]$", ErrorMessage = "Seleccione Masculino o Femenino.")]
+    public string Sex { get; set; } = string.Empty;
     [Required, MaxLength(40)] public string DocumentNumber { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string GivenNames { get; set; } = string.Empty;
     [Required, MaxLength(160)] public string FamilyNames { get; set; } = string.Empty;
@@ -249,6 +251,7 @@ public sealed class TenantDataService(
         string? importedEmployeeNumber,
         CancellationToken cancellationToken)
     {
+        if (form.Sex is not "M" and not "F") throw new InvalidOperationException("Seleccione expresamente el sexo (M o F).");
         var (_, db) = await OpenAsync(cancellationToken);
         await using (db)
         await using (var transaction = await db.Database.BeginTransactionAsync(cancellationToken))
@@ -278,7 +281,7 @@ public sealed class TenantDataService(
                 x => x.DocumentType == "CI" && x.NormalizedDocumentNumber == normalizedDocument, cancellationToken);
             if (person is null)
             {
-                person = new Person { DocumentType = "CI", NormalizedDocumentNumber = normalizedDocument };
+                person = new Person { DocumentType = "CI", NormalizedDocumentNumber = normalizedDocument, Sex = form.Sex };
                 db.People.Add(person);
             }
             person.DocumentNumber = form.DocumentNumber.Trim();

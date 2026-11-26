@@ -1,0 +1,19 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+<dialog @ref="dialog" class="legal-dialog" aria-labelledby="legal-dialog-title" aria-describedby="legal-dialog-identity">
+    <div class="legal-dialog-heading"><div><h2 id="legal-dialog-title">Ficha del permiso legal</h2><p id="legal-dialog-identity">@Rule.Name · @Rule.Code · Versión @Version</p></div><button type="button" class="btn-secondary" data-dialog-close @onclick="CloseAsync">Cerrar</button></div>
+    <div class="legal-dialog-body"><LegalRuleDetails Rule="Rule"/></div>
+</dialog>
+@code {
+    [Parameter,EditorRequired] public LegalPermissionType Rule {get;set;}=null!;
+    [Parameter] public int Version {get;set;}
+    [Parameter] public string TriggerId {get;set;}="";
+    [Parameter] public EventCallback Closed {get;set;}
+    private ElementReference dialog;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<LegalPermissionDialog>? reference;
+    protected override async Task OnAfterRenderAsync(bool firstRender){if(!firstRender)return;module=await JS.InvokeAsync<IJSObjectReference>("import","./Components/Shared/LegalPermissionDialog.razor.js");reference=DotNetObjectReference.Create(this);await module.InvokeVoidAsync("show",dialog,TriggerId,reference);}
+    private async Task CloseAsync(){if(module is not null)await module.InvokeVoidAsync("close",dialog);}
+    [JSInvokable] public Task NotifyClosed()=>Closed.InvokeAsync();
+    public async ValueTask DisposeAsync(){if(module is not null){try{await module.InvokeVoidAsync("dispose",dialog);await module.DisposeAsync();}catch(JSDisconnectedException){} }reference?.Dispose();}
+}

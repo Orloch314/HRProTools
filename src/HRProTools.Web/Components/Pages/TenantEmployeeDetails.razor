@@ -42,7 +42,9 @@ else if (profile is not null)
     {
         <section class="panel">
             <h2>Datos generales</h2>
+            <HRProTools.Web.Components.Shared.PersonSexEditor EmploymentId="@EmploymentId" Updated="ReloadGeneralAsync"/>
             <div class="detail-grid">
+                <div><span>Sexo</span><strong>@(profile.General.Sex == "M" ? "Masculino" : profile.General.Sex == "F" ? "Femenino" : "Pendiente de completar")</strong></div>
                 <div><span>Cédula</span><strong>@profile.General.DocumentNumber</strong></div>
                 <div><span>Nombres</span><strong>@profile.General.GivenNames</strong></div>
                 <div><span>Apellidos</span><strong>@profile.General.FamilyNames</strong></div>
@@ -106,6 +108,7 @@ else if (profile is not null)
 
 @code {
     private const string GeneralTab = "general";
+    private async Task ReloadGeneralAsync() => profile = await Data.GetEmployeeHistoryAsync(EmploymentId);
     private const string LaborTab = "labor";
     private const string SalaryTab = "salary";
     private const string VacationTab = "vacation";

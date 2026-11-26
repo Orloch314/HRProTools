@@ -1,0 +1,22 @@
+@if(Summary is not null){
+<section class="panel legal-quota" aria-label="Saldo e historial de esta categoría" aria-live="polite">
+    <h3>@Summary.Name</h3><p>@Summary.PersonName · Legajo actual @Summary.EmployeeNumber</p>
+    <p>Utilizados son los importes comprometidos por solicitudes aprobadas, aunque correspondan a fechas futuras. Pendientes reservan el cupo; rechazadas y canceladas conservan su historial sin ocuparlo.</p>
+    @if(Summary.Buckets.Count>0){<div class="table-wrap"><table><thead><tr><th>Período</th><th>Cupo</th><th>Utilizados / aprobados</th><th>Reservados</th><th>Disponibles</th></tr></thead><tbody>
+    @foreach(var bucket in Summary.Buckets){<tr><td>@bucket.Period</td><td>@Amount(bucket.Limit,bucket.Unit)</td><td>@Amount(bucket.Used,bucket.Unit)</td><td>@Amount(bucket.Reserved,bucket.Unit)</td><td><strong>@Amount(bucket.Available,bucket.Unit)</strong></td></tr>}
+    </tbody></table></div>}
+    else{<p>Sin cupo periódico simple. Se valida la duración y la condición legal de cada presentación.</p>}
+    @if(Summary.Exhausted){<div class="notice notice-error">No queda cupo disponible en al menos uno de los períodos seleccionados. Cambie el período o gestione las solicitudes existentes antes de presentar otra.</div>}
+    @if(Summary.RestrictedHistory){<p>El cupo reúne los vínculos de la misma persona. El detalle muestra únicamente las empresas dentro de su alcance autorizado.</p>}
+    <h4>Solicitudes de esta categoría y período</h4>
+    <div class="table-wrap"><table><thead><tr><th>Presentación</th><th>Legajo</th><th>Fechas</th><th>Solicitado</th><th>Aprobado / utilizado</th><th>Reservado</th><th>Estado</th></tr></thead><tbody>
+    @foreach(var item in Summary.Requests){<tr><td>@Local(item.SubmittedAt).ToString("dd/MM/yyyy HH:mm")</td><td>@item.EmployeeNumber</td><td>@item.Start.ToString("dd/MM/yyyy") – @item.End.ToString("dd/MM/yyyy")</td><td>@Amount(item.Requested,item.Unit)</td><td>@Amount(item.Approved,item.Unit)</td><td>@Amount(item.Reserved,item.Unit)</td><td>@Status(item.Status)</td></tr>}
+    @if(Summary.Requests.Count==0){<tr><td colspan="7">No hay solicitudes registradas para esta categoría y período.</td></tr>}
+    </tbody></table></div>
+</section>}
+@code{
+    [Parameter] public PermissionQuotaSummary? Summary {get;set;}
+    private string Amount(decimal value,string unit)=>unit=="MINUTES" && Summary?.Code is "ACOMPANAMIENTO_DISCAPACIDAD" or "BUSQUEDA_EMPLEO" or "CONTROL_PRENATAL" ? $"{value/60m:0.###} horas ({value:0.###} min)" : $"{value:0.###} {LegalDurationInfo.UnitName(unit).ToLowerInvariant()}";
+    private static DateTimeOffset Local(DateTimeOffset value)=>TimeZoneInfo.ConvertTimeBySystemTimeZoneId(value,"America/Asuncion");
+    private static string Status(string status)=>status switch{"PENDING"=>"Pendiente","APPROVED"=>"Aprobado","CANCELLED"=>"Cancelado","REJECTED"=>"Rechazado",_=>status};
+}

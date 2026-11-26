@@ -15,7 +15,7 @@ using Npgsql;
 
 namespace HRProTools.Tests;
 
-public sealed class Phase4VacationRequestTests
+public sealed partial class Phase4VacationRequestTests
 {
     private static readonly DateOnly Monday = new(2026, 11, 2);
     private static readonly DateOnly Sunday = new(2026, 11, 8);
@@ -662,6 +662,7 @@ public sealed class Phase4VacationRequestTests
 
         public static async Task<TenantSchemaFixture> CreateAsync()
         {
+            await using (var global = new ApplicationDbContext(new DbContextOptionsBuilder<ApplicationDbContext>().UseNpgsql(Connection(), x => x.MigrationsHistoryTable("__ef_migrations_history", "auth")).Options)) await global.Database.MigrateAsync();
             var schema = Schema();
             await using var admin = new NpgsqlConnection(Connection());
             await admin.OpenAsync();
@@ -776,6 +777,14 @@ public sealed class Phase4VacationRequestTests
             services.AddScoped<VacationWorkflowService>();
             services.AddScoped<VacationRequestService>();
             services.AddScoped<PermissionRequestService>();
+            services.AddScoped<LegalPermissionReviewService>();
+            services.AddScoped<ReferenceAdministrationService>();
+            services.AddScoped<TenantCalendarService>();
+            services.AddScoped<WorkCalendarService>();
+            services.AddScoped<CompanyDayOffService>();
+            services.AddScoped<VacationService>();
+            services.AddScoped<PersonSexService>();
+            services.AddScoped<TenantDataService>();
             services.AddScoped<AbsenceService>();
             services.AddScoped<OperationalAlertService>();
             services.AddScoped<RoleDashboardService>();

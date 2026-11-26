@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
 using HRProTools.Web.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Components.Authorization;
+using HRProTools.Web.Security;
 
 namespace HRProTools.Web.Services;
 
@@ -27,7 +29,8 @@ public sealed record VacationDateCalculation(
     bool IsScheduledWorkday,
     bool IsHoliday,
     string HolidayName,
-    bool CountsAsVacationDay);
+    bool CountsAsVacationDay,
+    Guid? CompanyDayOffRequestId = null);
 
 public sealed record VacationIntervalCalculation(
     Guid EmploymentId,
@@ -61,7 +64,7 @@ public sealed record PermissionIntervalCalculation(
     int RequestedMinutes,
     IReadOnlyList<PermissionDateCalculation> Dates);
 
-public sealed class WorkCalendarService(CurrentTenantService currentTenant, TenantDbContextFactory factory)
+public sealed class WorkCalendarService(CurrentTenantService currentTenant, TenantDbContextFactory factory, AuthenticationStateProvider authentication)
 {
     public async Task<List<WorkSchedule>> GetSchedulesAsync(CancellationToken cancellationToken = default)
     {
@@ -129,13 +132,36 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
 
     public async Task SaveHolidayAsync(Guid companyId, DateOnly date, string name, CancellationToken cancellationToken = default)
     {
-        if (string.IsNullOrWhiteSpace(name)) throw new InvalidOperationException("Indique el nombre del feriado.");
+        await RequireAdministratorAsync();
+        if (string.IsNullOrWhiteSpace(name) || name.Length > 200) throw new InvalidOperationException("Indique el nombre del feriado (máximo 200 caracteres).");
         var db = await OpenAsync(cancellationToken);
         await using (db)
         {
-            db.CompanyHolidays.Add(new CompanyHoliday { CompanyId = companyId, Date = date, Name = name.Trim() });
+            if (!await db.Companies.AnyAsync(x => x.Id == companyId && x.IsActive, cancellationToken)) throw new UnauthorizedAccessException("Empresa no disponible en este grupo.");
+            var existing = await db.CompanyHolidays.SingleOrDefaultAsync(x => x.CompanyId == companyId && x.Date == date, cancellationToken);
+            if (existing?.IsActive == true) throw new InvalidOperationException("La empresa ya tiene un feriado adicional en esa fecha.");
+            if (existing is null) db.CompanyHolidays.Add(new CompanyHoliday { CompanyId = companyId, Date = date, Name = name.Trim() });
+            else { existing.IsActive = true; existing.Name = name.Trim(); existing.RemovedAtUtc = null; existing.RemovedByUserId = null; existing.RemovalReason = null; }
             await db.SaveChangesAsync(cancellationToken);
         }
+    }
+
+    public async Task RemoveHolidayAsync(Guid id, string reason, CancellationToken ct = default)
+    {
+        var actor = await RequireAdministratorAsync();
+        if (reason.Trim().Length is < 5 or > 500) throw new InvalidOperationException("Indique el motivo de baja (5–500 caracteres).");
+        await using var db = await OpenAsync(ct);
+        var holiday = await db.CompanyHolidays.SingleOrDefaultAsync(x => x.Id == id, ct) ?? throw new UnauthorizedAccessException("Feriado adicional no disponible en este grupo.");
+        if (!holiday.IsActive) return;
+        holiday.IsActive = false; holiday.RemovedAtUtc = DateTimeOffset.UtcNow; holiday.RemovedByUserId = actor; holiday.RemovalReason = reason.Trim();
+        await db.SaveChangesAsync(ct);
+    }
+
+    private async Task<string> RequireAdministratorAsync()
+    {
+        var user = (await authentication.GetAuthenticationStateAsync()).User;
+        if (!user.IsInRole(AppRoles.TenantAdministrator)) throw new UnauthorizedAccessException("Solo Administrador Tenant puede modificar feriados empresariales.");
+        return user.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? throw new UnauthorizedAccessException();
     }
 
     public async Task<VacationIntervalCalculation> CalculateVacationIntervalAsync(
@@ -161,7 +187,7 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
 
         var employment = await db.Employments.AsNoTracking()
             .Where(x => x.Id == employmentId && x.Status == EmploymentStatuses.Active)
-            .Select(x => new { x.Id, x.CompanyId, x.StartDate })
+            .Select(x => new { x.Id, x.CompanyId, x.StartDate, x.PersonId })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException("El vínculo laboral no está activo.");
         if (startDate < employment.StartDate)
@@ -173,9 +199,14 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
                 (x.ValidTo == null || x.ValidTo >= startDate))
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
-        var holidays = await db.CompanyHolidays.AsNoTracking()
-            .Where(x => x.CompanyId == employment.CompanyId && x.Date >= startDate && x.Date <= endDate)
-            .ToDictionaryAsync(x => x.Date, cancellationToken);
+        var holidays = await GlobalReferenceQueries.HolidaysAsync(db, employment.CompanyId, startDate, endDate, cancellationToken);
+
+        var benefits=await db.PermissionRequests.AsNoTracking().Include(x=>x.Dates)
+            .Where(x=>x.Employment.PersonId==employment.PersonId&&x.LegalCode==CompanyDayOffService.Code&&
+                (x.Status=="PENDING"||x.Status=="APPROVED")&&x.StartDate<=endDate&&x.EndDate>=startDate).ToListAsync(cancellationToken);
+        if(benefits.Any(x=>x.Unit=="HOURS"))throw new InvalidOperationException("Existe un permiso parcial de día libre empresarial en este intervalo. Cancele o cambie la solicitud en conflicto antes de presentar vacaciones de jornada completa; no se ajustan saldos automáticamente.");
+        if(benefits.Any(x=>x.Status=="PENDING"))throw new InvalidOperationException("Existe un día libre empresarial pendiente en este intervalo. Resuelva o cancele esa solicitud antes de presentar vacaciones.");
+        var freeDays=benefits.SelectMany(x=>x.Dates.Where(d=>d.CountsAsPermissionDay).Select(d=>new{d.Date,x.Id})).GroupBy(x=>x.Date).ToDictionary(g=>g.Key,g=>g.First().Id);
 
         var dates = new List<VacationDateCalculation>();
         for (var date = startDate; date <= endDate; date = date.AddDays(1))
@@ -195,8 +226,9 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
                 schedule.Name,
                 scheduledWorkday,
                 holiday is not null,
-                holiday?.Name ?? string.Empty,
-                scheduledWorkday && holiday is null));
+                holiday ?? (freeDays.ContainsKey(date)?"Día libre empresarial aprobado":""),
+                scheduledWorkday && holiday is null && !freeDays.ContainsKey(date),
+                freeDays.TryGetValue(date,out var benefitId)?benefitId:null));
         }
 
         var daysToReserve = dates.Count(x => x.CountsAsVacationDay);
@@ -269,17 +301,18 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
             [snapshot]);
     }
 
-    private static async Task<List<PermissionDateCalculation>> ResolvePermissionCalendarAsync(
+    internal static async Task<List<PermissionDateCalculation>> ResolvePermissionCalendarAsync(
         TenantDbContext db,
         Guid employmentId,
         DateOnly startDate,
         DateOnly endDate,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool includeClosed = false)
     {
         if (endDate < startDate)
             throw new InvalidOperationException("La fecha final no puede ser anterior a la fecha inicial.");
         var employment = await db.Employments.AsNoTracking()
-            .Where(x => x.Id == employmentId && x.Status == EmploymentStatuses.Active)
+            .Where(x => x.Id == employmentId && (includeClosed || x.Status == EmploymentStatuses.Active))
             .Select(x => new { x.CompanyId, x.StartDate })
             .SingleOrDefaultAsync(cancellationToken)
             ?? throw new InvalidOperationException("El vínculo laboral no está activo.");
@@ -292,9 +325,7 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
                 (x.ValidTo == null || x.ValidTo >= startDate))
             .OrderBy(x => x.ValidFrom)
             .ToListAsync(cancellationToken);
-        var holidays = await db.CompanyHolidays.AsNoTracking()
-            .Where(x => x.CompanyId == employment.CompanyId && x.Date >= startDate && x.Date <= endDate)
-            .ToDictionaryAsync(x => x.Date, cancellationToken);
+        var holidays = await GlobalReferenceQueries.HolidaysAsync(db, employment.CompanyId, startDate, endDate, cancellationToken);
 
         var result = new List<PermissionDateCalculation>();
         for (var date = startDate; date <= endDate; date = date.AddDays(1))
@@ -318,7 +349,7 @@ public sealed class WorkCalendarService(CurrentTenantService currentTenant, Tena
                 schedule.BreakEnd,
                 scheduled,
                 holiday is not null,
-                holiday?.Name ?? string.Empty,
+                holiday ?? string.Empty,
                 scheduled && holiday is null,
                 scheduled && holiday is null ? fullDayMinutes : 0));
         }

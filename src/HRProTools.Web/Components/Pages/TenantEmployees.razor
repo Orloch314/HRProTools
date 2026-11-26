@@ -12,6 +12,7 @@
 {
 <section class="panel"><h2>Alta de funcionario</h2><EditForm Model="create" OnValidSubmit="CreateAsync" FormName="create-employee"><DataAnnotationsValidator/><ValidationSummary/>
     <div class="form-grid">
+        <label><span>Sexo</span><InputSelect @bind-Value="create.Sex"><option value="">Seleccione</option><option value="M">Masculino</option><option value="F">Femenino</option></InputSelect></label>
         <label><span>Cedula</span><InputText @bind-Value="create.DocumentNumber"/></label>
         <label><span>Nombres</span><InputText @bind-Value="create.GivenNames"/></label><label><span>Apellidos</span><InputText @bind-Value="create.FamilyNames"/></label>
         <label><span>Fecha de ingreso</span><InputDate @bind-Value="create.StartDate"/></label><label><span>Empresa</span><InputSelect @bind-Value="create.CompanyId" @bind-Value:after="NormalizeEmployeeCatalogSelections"><option value="">Seleccione</option>@foreach(var x in ActiveCompanies){<option value="@x.Id">@x.LegalName</option>}</InputSelect></label>

@@ -1,6 +1,8 @@
 using System.Data;
+using System.Text.Json;
 using HRProTools.Web.Data;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace HRProTools.Web.Services;
 
@@ -20,7 +22,8 @@ public sealed record PermissionRequestListItem(
     bool CanCancel,
     string CancellationReason,
     DateTimeOffset CreatedAtUtc,
-    IReadOnlyList<VacationDecisionHistoryItem> History);
+    IReadOnlyList<VacationDecisionHistoryItem> History,
+    string? LegalCode = null, string? LegalName = null);
 
 public sealed record PermissionDecisionItem(
     Guid Id,
@@ -42,7 +45,8 @@ public sealed record PermissionDecisionItem(
     bool CanAct,
     bool PersonalDataVisible,
     DateTimeOffset CreatedAtUtc,
-    IReadOnlyList<VacationDecisionHistoryItem> History);
+    IReadOnlyList<VacationDecisionHistoryItem> History,
+    string? LegalCode = null, string? LegalName = null);
 
 public sealed class PermissionRequestService(
     TenantDbContextFactory tenantFactory,
@@ -51,23 +55,47 @@ public sealed class PermissionRequestService(
 {
     private string? PublicBaseUrl => configuration["Application:PublicBaseUrl"];
 
+    public async Task<List<LegalPermissionType>> GetAvailableLegalTypesAsync(CancellationToken ct = default, DateOnly? date = null)
+    {
+        var link = await workflowService.GetSelfLinkAsync(ct);
+        await using var db = tenantFactory.Create(link.SchemaName);
+        var types=await GlobalReferenceQueries.PermissionsAsync(db, GlobalReferenceQueries.Today, ct);
+        var benefit=await CompanyDayOffService.RuleAsync(db,link.EmploymentId,date??GlobalReferenceQueries.Today,ct);
+        if(benefit is not null)types.Add(benefit);
+        return types;
+    }
+
     public async Task<PermissionIntervalCalculation> PreviewSelfAsync(
         string unit,
         DateOnly startDate,
         DateOnly endDate,
         TimeOnly? startTime,
         TimeOnly? endTime,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegalPermissionInput? legal = null)
     {
         var link = await workflowService.GetSelfLinkAsync(cancellationToken);
         await using var db = tenantFactory.Create(link.SchemaName);
-        var calculation = await CalculateAsync(db, link.EmploymentId, unit, startDate, endDate, startTime, endTime, cancellationToken);
+        var legalType = legal is null ? null : await ResolveRuleAsync(db,link.EmploymentId,legal.Code,startDate,cancellationToken);
+        var calculation = legal is null
+            ? await CalculateAsync(db, link.EmploymentId, unit, startDate, endDate, startTime, endTime, cancellationToken)
+            : await LegalPermissionRules.CalculateAsync(db, link.EmploymentId, legal, unit, startDate, endDate, startTime, endTime, cancellationToken, legalType);
+        if (legal is not null) await LegalPermissionRules.CheckQuotasAsync(db, link.EmploymentId, legal, calculation, cancellationToken, legalType);
         if (await HasOverlapAsync(db, link.EmploymentId, calculation, null, cancellationToken))
             throw new InvalidOperationException("El intervalo se superpone con otra ausencia pendiente o aprobada.");
         return calculation;
     }
 
     public async Task<Guid> CreateSelfAsync(
+        Guid requestId, string permissionType, string unit, DateOnly startDate, DateOnly endDate,
+        TimeOnly? startTime, TimeOnly? endTime, string reason, CancellationToken cancellationToken = default, LegalPermissionInput? legal = null)
+    {
+        try{return await CreateSelfCoreAsync(requestId,permissionType,unit,startDate,endDate,startTime,endTime,reason,cancellationToken,legal);}
+        catch(Exception ex) when (ex is PostgresException {SqlState:PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected} || ex is DbUpdateException {InnerException:PostgresException {SqlState:PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected}})
+        {throw new InvalidOperationException("Otra solicitud se procesó al mismo tiempo. Actualice el saldo y vuelva a intentarlo; no se creó una reserva adicional.",ex);}
+    }
+
+    private async Task<Guid> CreateSelfCoreAsync(
         Guid requestId,
         string permissionType,
         string unit,
@@ -76,7 +104,8 @@ public sealed class PermissionRequestService(
         TimeOnly? startTime,
         TimeOnly? endTime,
         string reason,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        LegalPermissionInput? legal = null)
     {
         if (requestId == Guid.Empty) throw new InvalidOperationException("La solicitud necesita un identificador válido.");
         permissionType = permissionType.Trim().ToUpperInvariant();
@@ -89,24 +118,34 @@ public sealed class PermissionRequestService(
         var link = await workflowService.GetSelfLinkAsync(cancellationToken);
         await using var db = tenantFactory.Create(link.SchemaName);
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
-        await db.Database.ExecuteSqlRawAsync("LOCK TABLE permission_request, vacation_request IN SHARE ROW EXCLUSIVE MODE", cancellationToken);
+        await db.Database.ExecuteSqlRawAsync("LOCK TABLE permission_request, vacation_request, absence IN SHARE ROW EXCLUSIVE MODE", cancellationToken);
         var existing = await db.PermissionRequests.AsNoTracking().SingleOrDefaultAsync(x => x.Id == requestId, cancellationToken);
         if (existing is not null)
         {
-            if (existing.EmploymentId != link.EmploymentId || existing.PermissionType != permissionType || existing.Unit != unit ||
-                existing.StartDate != startDate || existing.EndDate != endDate || existing.StartTime != startTime || existing.EndTime != endTime)
+            if (existing.EmploymentId != link.EmploymentId || existing.LegalCode != legal?.Code || (existing.LegalInput is null ? null : JsonSerializer.Deserialize<LegalPermissionInput>(existing.LegalInput)) != legal || (legal is null && existing.PermissionType != permissionType) || existing.Unit != unit ||
+                existing.StartDate != startDate || existing.EndDate != endDate || (legal?.Code!=CompanyDayOffService.Code && (existing.StartTime != startTime || existing.EndTime != endTime)))
                 throw new InvalidOperationException("El identificador ya pertenece a otra solicitud.");
             await transaction.CommitAsync(cancellationToken);
             return existing.Id;
         }
 
-        var calculation = await CalculateAsync(db, link.EmploymentId, unit, startDate, endDate, startTime, endTime, cancellationToken);
+        var legalType = legal is null ? null : await ResolveRuleAsync(db,link.EmploymentId,legal.Code,startDate,cancellationToken);
+        if (legalType is not null) permissionType = legalType.IsPaid ? PermissionRequestTypes.Paid : PermissionRequestTypes.Unpaid;
+        var calculation = legal is null
+            ? await CalculateAsync(db, link.EmploymentId, unit, startDate, endDate, startTime, endTime, cancellationToken)
+            : await LegalPermissionRules.CalculateAsync(db, link.EmploymentId, legal, unit, startDate, endDate, startTime, endTime, cancellationToken, legalType);
+        if (legal is not null) await LegalPermissionRules.CheckQuotasAsync(db, link.EmploymentId, legal, calculation, cancellationToken, legalType);
         if (await HasOverlapAsync(db, link.EmploymentId, calculation, null, cancellationToken))
             throw new InvalidOperationException("El intervalo se superpone con otra ausencia pendiente o aprobada.");
-        var snapshot = await workflowService.BuildSnapshotAsync(db, link.TenantId, link.EmploymentId, link.UserId, cancellationToken);
+        var snapshot = await workflowService.BuildSnapshotAsync(db, link.TenantId, link.EmploymentId, link.UserId, cancellationToken, legalType?.Protected == true);
         var first = snapshot[0];
         var request = new PermissionRequest
         {
+            LegalCode = legal?.Code,
+            LegalInput = legal is null ? null : JsonSerializer.Serialize(legal),
+            LegalSnapshot = legalType is null ? null : JsonSerializer.Serialize(legalType),
+            LegalReviewStatus = legalType?.Protected == true ? "PENDING" : "NOT_REQUIRED",
+            SexAtSubmission = await db.Employments.Where(x => x.Id == link.EmploymentId).Select(x => x.Person.Sex).SingleAsync(cancellationToken),
             Id = requestId,
             EmploymentId = link.EmploymentId,
             CompanyId = first.CompanyId,
@@ -124,6 +163,13 @@ public sealed class PermissionRequestService(
             Dates = calculation.Dates.Select(ToEntity).ToList(),
             ApprovalSteps = snapshot.Select(ToEntity).ToList()
         };
+        foreach (var day in request.Dates)
+        {
+            var original = calculation.Dates.Single(x => x.Date == day.Date);
+            day.LegalDayFraction = !day.CountsAsPermissionDay ? 0 : calculation.Unit == PermissionRequestUnits.Days ? 1 : (decimal)day.EffectiveMinutes / LegalPermissionRules.FullMinutes(original);
+            day.IntervalStart = calculation.StartTime;
+            day.IntervalEnd = calculation.EndTime;
+        }
         db.PermissionRequests.Add(request);
         var employeeName = await EmployeeNameAsync(db, link.EmploymentId, cancellationToken);
         NotificationOutboxService.EnqueueRequestEvent(
@@ -153,7 +199,7 @@ public sealed class PermissionRequestService(
         return requests.Select(x => new PermissionRequestListItem(
             x.Id, x.PermissionType, x.Unit, x.StartDate, x.EndDate, x.StartTime, x.EndTime, x.RequestedDays, x.RequestedMinutes,
             x.Reason, x.Status, PendingLevel(x), cancellationAllowed && x.Status is PermissionRequestStatuses.Pending or PermissionRequestStatuses.Approved,
-            x.CancellationReason, x.CreatedAtUtc, History(x.ApprovalSteps, userNames))).ToList();
+            x.CancellationReason, x.CreatedAtUtc, History(x.ApprovalSteps, userNames), x.LegalCode, SnapshotName(x.LegalSnapshot))).ToList();
     }
 
     public async Task<List<PermissionDecisionItem>> GetWorkflowRequestsAsync(CancellationToken cancellationToken = default)
@@ -202,7 +248,7 @@ public sealed class PermissionRequestService(
                 personalVisible && scopeStep is not null ? departments.GetValueOrDefault(scopeStep.DepartmentId, "—") : "—",
                 request.PermissionType, request.Unit, request.StartDate, request.EndDate, request.StartTime, request.EndTime,
                 request.RequestedDays, request.RequestedMinutes, personalVisible ? request.Reason : string.Empty, request.Status, PendingLevel(request), canAct,
-                personalVisible, request.CreatedAtUtc, History(request.ApprovalSteps, userNames));
+                personalVisible, request.CreatedAtUtc, personalVisible ? History(request.ApprovalSteps, userNames) : [], personalVisible ? request.LegalCode : null, personalVisible ? SnapshotName(request.LegalSnapshot) : null);
         }).ToList();
     }
 
@@ -232,6 +278,8 @@ public sealed class PermissionRequestService(
         }
         if (request.Status is not PermissionRequestStatuses.Pending and not PermissionRequestStatuses.Approved)
             throw new InvalidOperationException("Una solicitud rechazada no requiere cancelación.");
+        if(request.LegalCode==CompanyDayOffService.Code&&await db.VacationRequestDays.AnyAsync(x=>x.CompanyDayOffRequestId==request.Id&&(x.VacationRequest.Status=="PENDING"||x.VacationRequest.Status=="APPROVED"),cancellationToken))
+            throw new InvalidOperationException("Este día libre respalda el cálculo de vacaciones existentes. Cancele primero esas vacaciones y vuelva a presentar los intervalos corregidos; sus saldos no se recalculan automáticamente.");
         var steps = await db.PermissionApprovalSteps.Include(x => x.Actors)
             .Where(x => x.PermissionRequestId == requestId).OrderBy(x => x.Sequence).ToListAsync(cancellationToken);
         steps.Where(x => x.Status is VacationApprovalStepStatuses.Pending or VacationApprovalStepStatuses.Waiting)
@@ -285,6 +333,13 @@ public sealed class PermissionRequestService(
         var hasRole = current.Type == VacationApprovalLevelTypes.Approver ? actor.IsApprover : actor.IsHumanResources;
         if (!hasRole || !current.Actors.Any(x => x.UserId == actor.UserId))
             throw new UnauthorizedAccessException("La solicitud no está dentro de su nivel o alcance operativo.");
+
+        if (request.LegalSnapshot is not null && JsonSerializer.Deserialize<LegalPermissionType>(request.LegalSnapshot)!.Protected)
+        {
+            if (!actor.IsHumanResources) throw new UnauthorizedAccessException("El derecho legal requiere revisión de Recursos Humanos, no autorización discrecional del jefe.");
+            if (approve && request.LegalReviewStatus != "VERIFIED") throw new InvalidOperationException("Verifique antes los requisitos y la documentación en Revisión legal.");
+            if (!approve && request.LegalReviewStatus != "NOT_MET") throw new InvalidOperationException("No se puede rechazar discrecionalmente un derecho legal. HR debe documentar los requisitos no cumplidos.");
+        }
 
         current.DecidedByUserId = actor.UserId;
         current.DecisionComment = comment.Trim();
@@ -368,6 +423,9 @@ public sealed class PermissionRequestService(
         };
     }
 
+    internal static Task<LegalPermissionType> ResolveRuleAsync(TenantDbContext db,Guid employment,string code,DateOnly date,CancellationToken ct)=>
+        code==CompanyDayOffService.Code?CompanyDayOffService.RequiredRuleAsync(db,employment,date,ct):GlobalReferenceQueries.RequiredPermissionAsync(db,code,ct);
+
     private static async Task<bool> HasOverlapAsync(
         TenantDbContext db,
         Guid employmentId,
@@ -375,20 +433,21 @@ public sealed class PermissionRequestService(
         Guid? excludedRequestId,
         CancellationToken cancellationToken)
     {
+        if (await db.Absences.AnyAsync(x => x.EmploymentId == employmentId && x.Status != AbsenceStatuses.Cancelled && x.StartDate <= calculation.EndDate && x.EndDate >= calculation.StartDate, cancellationToken)) return true;
         if (await db.VacationRequests.AsNoTracking().AnyAsync(x => x.EmploymentId == employmentId &&
             (x.Status == VacationRequestStatuses.Pending || x.Status == VacationRequestStatuses.Approved) &&
             x.StartDate <= calculation.EndDate && x.EndDate >= calculation.StartDate, cancellationToken))
             return true;
-        var candidates = await db.PermissionRequests.AsNoTracking().Where(x => x.EmploymentId == employmentId &&
+        var candidates = await db.PermissionRequests.AsNoTracking().Include(x => x.Dates).Where(x => x.EmploymentId == employmentId &&
             x.Id != excludedRequestId &&
             (x.Status == PermissionRequestStatuses.Pending || x.Status == PermissionRequestStatuses.Approved) &&
             x.StartDate <= calculation.EndDate && x.EndDate >= calculation.StartDate).ToListAsync(cancellationToken);
         foreach (var existing in candidates)
         {
-            if (calculation.Unit == PermissionRequestUnits.Days || existing.Unit == PermissionRequestUnits.Days)
-                return true;
-            if (existing.StartDate == calculation.StartDate && existing.StartTime < calculation.EndTime && existing.EndTime > calculation.StartTime)
-                return true;
+            foreach (var day in calculation.Dates.Where(x => x.CountsAsPermissionDay))
+                if (existing.Dates.Any(x => x.Date == day.Date && x.CountsAsPermissionDay &&
+                    (calculation.Unit == PermissionRequestUnits.Days || existing.Unit == PermissionRequestUnits.Days ||
+                    (x.IntervalStart ?? existing.StartTime) < calculation.EndTime && (x.IntervalEnd ?? existing.EndTime) > calculation.StartTime))) return true;
         }
         return false;
     }
@@ -461,6 +520,8 @@ public sealed class PermissionRequestService(
                 : $"{request.RequestedDays} día(s)",
             state,
             pendingLevel,
-            decisionReason,
+            request.LegalCode is not null ? string.Empty : decisionReason,
             relativePath);
+
+    public static string? SnapshotName(string? json) => json is null ? null : JsonSerializer.Deserialize<LegalPermissionType>(json)?.Name;
 }

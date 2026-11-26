@@ -1,0 +1,53 @@
+<div class="notice"><strong>@Type.Name</strong><p>@Type.Law · Art. @Type.Article</p><p>Documentación: @Type.Documentation. Preaviso: @Type.Notice.</p><p>@Type.Remuneration. Información de trámite; no constituye asesoría jurídica.</p></div>
+<div class="form-grid" @onchange="NotifyChanged">
+@if(Type.Engine=="COMPANY_BENEFIT"&&Type.AnnualLimit==.5m){<label><span>Mitad de jornada</span><select @bind="Value.Variant"><option value="FIRST_HALF">Primera mitad efectiva</option><option value="SECOND_HALF">Segunda mitad efectiva</option></select></label><p>El sistema calcula el intervalo y los minutos excluyendo el descanso de la jornada.</p>}
+@if(Type.Engine == "PARAMETRIC" && Type.EventLimit.HasValue){<label><span>Fecha identificadora del evento</span><InputDate @bind-Value="Value.EventDate"/></label>}
+@if(Value.Code is "MATRIMONIO" or "LUTO_FAMILIAR")
+{<p>HR verificará el cómputo del período. No se trasladan automáticamente fines de semana ni feriados. Si solicita fechas no consecutivas, indique las otras dos fechas junto a la inicial del formulario.</p><label><span>Segunda fecha solicitada (solo si no consecutivas)</span><InputDate @bind-Value="Value.EventSecondDay"/></label><label><span>Tercera fecha solicitada (solo si no consecutivas)</span><InputDate @bind-Value="Value.EventThirdDay"/></label>}
+@if(Value.Code is "MATRIMONIO" or "LUTO_FAMILIAR" or "PATERNIDAD" or "MATERNIDAD" or "ADOPCION")
+{
+ <label><span>@(Value.Code == "ADOPCION" ? "Fecha de resolución judicial" : "Fecha del evento / probable parto")</span><InputDate @bind-Value="Value.EventDate"/></label>
+}
+@if(Value.Code == "LUTO_FAMILIAR")
+{
+ <label><span>Parentesco</span><select @bind="Value.Relationship"><option value="">Seleccione</option><option value="CONYUGE">Cónyuge</option><option value="HIJO">Hijo/a</option><option value="PADRE_MADRE">Padre/madre</option><option value="ABUELO">Abuelo/a</option><option value="HERMANO">Hermano/a</option></select></label>
+}
+@if(Value.Code == "MATERNIDAD")
+{
+ <label><span>Supuesto legal</span><select @bind="Value.Variant"><option value="ORDINARY">Ordinario / múltiple</option><option value="SPECIAL">Especial de 24 semanas</option><option value="MULTIPLE_SPECIAL">Especial y múltiple: mayor extensión</option><option value="TRANSFER">Transferencia por fallecimiento de la madre</option></select></label>
+ @if(Value.Variant == "TRANSFER")
+ {
+ <label><span>Período original desde</span><InputDate @bind-Value="Value.OriginalStart"/></label><label><span>Período original hasta</span><InputDate @bind-Value="Value.OriginalEnd"/></label><label><span>Fecha de fallecimiento</span><InputDate @bind-Value="Value.DeathDate"/></label>
+ }
+}
+@if(Value.Code is "MATERNIDAD" or "LACTANCIA")
+{<label><span>Cantidad de hijos del parto</span><InputNumber @bind-Value="Value.Children" min="1" max="10"/></label>}
+@if(Value.Code is "LACTANCIA" or "ADOPCION")
+{<label><span>Fecha de nacimiento del niño/a</span><InputDate @bind-Value="Value.ChildBirthDate"/></label>}
+@if(Value.Code == "ADOPCION")
+{<label><span>Supuesto para edad exacta de seis meses (revisión HR)</span><select @bind="Value.Variant"><option value="ORDINARY">12 semanas sujeto a revisión</option><option value="SIX_MONTH_REVIEW_18">18 semanas sujeto a revisión</option></select></label>}
+@if(Value.Code == "LACTANCIA")
+{
+ <label><span>Fecha de reintegro</span><InputDate @bind-Value="Value.ReturnDate"/></label><label><span>Modalidad</span><select @bind="Value.Variant"><option value="ORDINARY">Inicial según guía MTESS (hasta siete meses de edad)</option><option value="INITIAL_HR_REVIEW">Supuesto inicial especial a revisión jurídica HR</option><option value="EXTENDED">Extensión médica</option></select></label>
+ @if(Value.Variant == "EXTENDED"){<label><span>Fecha del certificado médico vigente</span><InputDate @bind-Value="Value.MedicalCertificateDate"/></label>}
+}
+@if(Value.Code is "LACTANCIA" or "BUSQUEDA_EMPLEO")
+{<label><span>Minutos diarios (modalidad por horas)</span><InputNumber @bind-Value="Value.DailyMinutes" min="1"/></label>}
+@if(Value.Code is "LACTANCIA" or "CONTROL_PRENATAL")
+{<label class="checkbox-field"><span><InputCheckbox @bind-Value="Value.MedicalExtension"/> Cuento con indicación médica para ampliación</span></label>}
+@if(Value.Code == "CONTROL_PRENATAL")
+{<label class="checkbox-field"><span><InputCheckbox @bind-Value="Value.Urgent"/> Situación de urgencia</span></label>}
+@if(Value.Code is "PAP_MAMOGRAFIA" or "PREVENCION_PROSTATA_TESTICULOS_PENE_COLON")
+{
+ <label><span>Examen preventivo (solo visible para usted y HR)</span><select @bind="Value.Exam"><option value="">Seleccione</option>@if(Value.Code == "PAP_MAMOGRAFIA"){<option value="PAP">Papanicolau</option><option value="MAMOGRAFIA">Mamografía</option><option value="AMBOS">Ambos exámenes</option>}else{<option value="PROSTATA">Próstata</option><option value="TESTICULOS">Testículos</option><option value="PENE">Pene</option><option value="COLON">Colon</option>}</select></label>
+}
+@if(Value.Code is "OBLIGACION_LEGAL" or "ACOMPANAMIENTO_DISCAPACIDAD")
+{<label><span>Referencia de la obligación / atención (sin diagnóstico)</span><input @bind="Value.ObligationReference" maxlength="500"/></label>}
+</div>
+@code {
+ [Parameter, EditorRequired] public LegalPermissionInput Value { get; set; } = new();
+ [Parameter] public LegalPermissionType? Rule { get; set; }
+ [Parameter] public EventCallback Changed {get;set;}
+ private Task NotifyChanged()=>Changed.InvokeAsync();
+ private LegalPermissionType Type => Rule ?? LegalPermissionCatalog.Get(Value.Code);
+}

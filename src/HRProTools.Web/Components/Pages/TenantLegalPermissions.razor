@@ -1,0 +1,5 @@
+@page "/tenant/permisos-legales"
+@attribute [Authorize(Policy = AppPolicies.TenantAdministration)]
+<PageTitle>Catálogo legal - HR ProTools</PageTitle>
+<div class="page-heading"><div><span class="eyebrow">Administración tenant</span><h1>Catálogo legal vigente</h1><p>Consulta de solo lectura. El Administrador Global mantiene las reglas oficiales.</p></div></div>
+<HRProTools.Web.Components.Shared.LegalCatalogAdministration/>

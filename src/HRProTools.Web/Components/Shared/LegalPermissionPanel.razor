@@ -1,0 +1,33 @@
+@inject LegalPermissionReviewService Reviews
+@if(detail is not null)
+{
+ <section class="panel"><h3>@(detail.Rule?.Name ?? "Permiso ordinario histórico")</h3>
+ @if(detail.Rule is not null)
+ {
+ <LegalDurationBlock Rule="@detail.Rule"/>
+ <p>@detail.Rule.Law · Art. @detail.Rule.Article · Versión @detail.Rule.RuleVersion</p><p>Documentación: @detail.Rule.Documentation</p><p>Estado de revisión: @detail.ReviewStatus</p>
+ @if(detail.Input is not null){<div class="detail-grid"><div><span>Fecha del evento</span><strong>@detail.Input.EventDate.ToString("dd/MM/yyyy")</strong></div><div><span>Supuesto</span><strong>@detail.Input.Variant</strong></div>@if(detail.Input.Exam.Length>0){<div><span>Examen</span><strong>@detail.Input.Exam</strong></div>}@if(detail.Input.Relationship.Length>0){<div><span>Parentesco</span><strong>@detail.Input.Relationship</strong></div>}</div>}
+ }
+ <h4>Documentación privada · PDF, PNG o JPEG · máximo 5 MB</h4><InputFile OnChange="UploadAsync" accept=".pdf,.png,.jpg,.jpeg"/>
+ <ul>@foreach(var doc in detail.Documents){<li>@doc.Name · @doc.Status @if(!Self && doc.Status==FileScanStatuses.Clean){<a href="@($"tenant/permisos/documentos/{doc.Id}")" target="_blank" rel="noopener">Descargar</a>}</li>}</ul>
+ @if(!Self && detail.Rule?.Protected == true && detail.Status == PermissionRequestStatuses.Pending)
+ {
+ <h4>Verificación de requisitos legales por HR</h4><p>No es una autorización discrecional. No registre diagnósticos en comentarios.</p>
+ <div class="form-grid"><label><span>Resultado</span><select @bind="reviewStatus"><option value="PENDING">Requiere información</option><option value="VERIFIED">Requisitos verificados</option><option value="NOT_MET">Requisitos legales no cumplidos</option></select></label><label><span>Plazo documental posterior, solo cuando corresponda</span><InputDate @bind-Value="dueDate"/></label></div><label><span>Fundamento y excepciones documentadas</span><textarea @bind="comment" maxlength="1000"></textarea></label><button class="btn-secondary" @onclick="ReviewAsync">Registrar verificación HR</button>
+ }
+ <h4>Historial de revisión</h4>@foreach(var review in detail.Reviews){<p>@review.CreatedAt.ToString("dd/MM/yyyy HH:mm") · @review.Status · @review.Comment @if(review.DueDate.HasValue){<span>· Entrega hasta @review.DueDate.Value.ToString("dd/MM/yyyy")</span>}</p>}
+ <PermissionQuotaPanel Summary="quota"/>
+ </section>
+}
+@if(message.Length>0){<div class="notice" role="status">@message</div>}
+@code {
+ [Parameter] public Guid RequestId { get; set; }
+ [Parameter] public bool Self { get; set; }
+ private LegalPermissionDetail? detail;
+ private PermissionQuotaSummary? quota;
+ private string message="", comment="", reviewStatus="PENDING";
+ private DateOnly? dueDate;
+ protected override async Task OnParametersSetAsync() { detail=null; quota=null; message=""; try { detail=await Reviews.GetAsync(RequestId,Self);quota=await Reviews.GetRequestQuotaAsync(RequestId,Self); } catch(Exception ex){message=ex.Message;} }
+ private async Task ReviewAsync(){try{await Reviews.ReviewAsync(RequestId,reviewStatus,comment,dueDate);detail=await Reviews.GetAsync(RequestId,Self);message="Verificación registrada. La resolución se realiza en el circuito existente.";}catch(Exception ex){message=ex.Message;}}
+ private async Task UploadAsync(InputFileChangeEventArgs args){try{var file=args.File;await using var stream=file.OpenReadStream(AbsenceDocumentValidator.MaxSize);using var memory=new MemoryStream();await stream.CopyToAsync(memory);await Reviews.UploadAsync(RequestId,Self,file.Name,file.ContentType,memory.ToArray());detail=await Reviews.GetAsync(RequestId,Self);message="Documento registrado con su estado antivirus.";}catch(Exception ex){message=ex.Message;}}
+}
