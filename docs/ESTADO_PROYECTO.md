@@ -2,7 +2,7 @@
 
 **Fecha:** 26/11/2026
 **Fase actual:** Fase 5/5 - cierre funcional del MVP
-**Estado:** MVP funcional implementado; deployment de pruebas autorizado y en ejecución. La preparación y auditorías anteriores se conservan como registros históricos.
+**Estado:** MVP publicado en el VPS de pruebas, incluida la corrección del código de grupo. Las auditorías y preparaciones anteriores se conservan como registros históricos.
 
 ## Código automático del grupo — 26/11/2026
 
@@ -10,14 +10,19 @@
 - Reserva transaccional en `platform.tenant` con bloqueo breve, liberado antes de crear el esquema o enviar la invitación. No se agregan campos automáticos visibles ni migraciones; los códigos siguen disponibles como identificadores de consulta en la lista.
 - Prueba PostgreSQL específica: altas concurrentes reciben códigos diferentes y correlativos; códigos previos preservados y formulario válido sin código manual. Se ejecuta solo en QA local, sin crear tenants ficticios en el VPS. Suite Release: **112 superadas, 0 fallidas, 0 omitidas**, 1 min 46 s. El primer intento aislado fue anulado por bloqueo IPC del sandbox; la ejecución completa fuera de esa restricción terminó correctamente.
 
-## Deployment de pruebas — autorizado y en ejecución — 26/11/2026
+## Deployment de pruebas — completado — 26/11/2026
 
-- Autorizados commit/push de la rama existente y deployment incremental en el VPS 95.217.134.178, con dominios HR, PostgreSQL 18/main, Nginx y ClamAV existentes. Solo recursos nuevos de HR; ninguna reparación de Eqmatch ni cambios en otras aplicaciones.
-- No se instalarán backups automáticos, timers ni copias externas. Scripts manuales de backup/restauración conservados; copias de configuración puntuales solo para rollback dirigido. Esta decisión sustituye los pendientes anteriores de política externa de backups.
-- Nueva entrada segura interactiva para bootstrap y SMTP Aruba: getpass → stdin, sin secretos en argumentos/archivos/logs. SMTP se guarda mediante el mecanismo cifrado existente. Prueba autorizada única a orloch314@gmail.com, con reserva persistente que impide reenvío automático. DKIM se informa según evidencia, sin bloquear toda la publicación.
-- Revalidación remota inicial solo lectura: recursos HR ausentes, puerto 5091 libre, servicios anteriores activos salvo Eqmatch ya inactivo/dead; se preserva su estado. No hubo cambios remotos en esta revalidación.
-- Pruebas Release actuales: **111/111 correctas**, 0 fallidas/omitidas. Paquete de producción se generará después del commit publicado usando `-RequireClean`, version.json y SHA-256; no se publicará el bundle previo con fuentes sin commit.
-- Informe operativo vigente: sección 13 de [05-Deployment-Produccion.md](05-Deployment-Produccion.md). Commit, resultado y comprobaciones remotas se completarán al terminar.
+- Rama publicada: `codex/phase5-mvp-completion`, remoto oficial `https://github.com/Orloch314/HRProTools`. Revisión aplicativa activa **`85487dda41b8d00a63abe6ff2912cf2b406301fd`**; incluye la corrección del formulario Global. Push verificado mediante `git ls-remote`. El commit posterior de cierre modifica únicamente documentación y no cambia el binario desplegado.
+- Bundle activo `test-20261126-group-auto.tar.gz`, SHA-256 `090871b8b34b581f0ad3f1eb861151a67e15ca0162b311ebc9184bd209a4f645`. `version.json` indica el commit exacto y fuentes sin cambios pendientes; archivo y cada miembro verificados antes de activar. Release anterior conservado para rollback. No se incluyeron binarios, .env reales, credenciales ni datos QA en Git; los mockups ajenos no versionados permanecen intactos.
+- URLs: **https://hrprotools.com**, **https://www.hrprotools.com** (308 a raíz), **https://app.hrprotools.com/Account/Login**. Las nueve páginas Astro devuelven 200 con TLS válido y los accesos usan el login correcto. Certificados Let's Encrypt válidos hasta 24/02/2027; ambas simulaciones de renovación dirigidas correctas.
+- `hrprotools.service` enabled/active/running, PID final observado **664434**, NRestarts=0. Kestrel exclusivamente `127.0.0.1:5091`, .NET 10 self-contained, sin alterar runtimes compartidos. Negociación HTTPS 200 y handshake real WSS/BlazorPack aceptado desde fuera del VPS. La aceptación funcional completa por roles continúa siendo manual; no se declara realizada por esta prueba de transporte.
+- PostgreSQL 18/main: DB exclusiva `hrprotool`, rol mínimo `hrprotool_app`. Cinco migraciones globales aplicadas; última `20261126200702_InitialAdministratorPasswordChange`. Bloque HBA validado, reglas anteriores conservadas byte a byte, parser sin errores y rechazo del rol HR a otra DB comprobado. La corrección del grupo no requirió migración; códigos/esquemas de grupos y claves persistentes comparados antes/después, sin modificaciones.
+- Bootstrap oculto realizado por el operador y cambio inicial completado (`MustChangePassword=false`). No se conocieron ni guardaron las contraseñas en chat/código/logs. SMTP `info@hrprotools.com`, Aruba 587 STARTTLS, protegido con Data Protection: único intento de prueba **ACCEPTED_BY_SMTP** a orloch314@gmail.com; recepción en bandeja y DKIM todavía no confirmados. No se reenvió la prueba.
+- ClamAV existente: Unix INSTREAM limpio OK, EICAR FOUND y acceso del usuario HR PONG. Claves persistentes 0700 y configuración root 0600; preservadas al actualizar HR. No se desactivó antivirus ni autenticación.
+- Los siete archivos Nginx anteriores mantienen sus hashes y los siete sitios previos sus respuestas 200/302. Nginx master, ambos PostgreSQL, EQ2, Eqmatchpy, Eqpair Beta, Tributa y ClamAV mantienen PID/estado inicial; no se reiniciaron. Eqmatch sigue inactivo/dead como en el baseline, sin reparación. Solo HR tuvo un reinicio controlado para la corrección.
+- No se instalaron timers/servicios HR de backup ni copias externas; scripts manuales preparados y recuperación local real ya comprobada. Copias puntuales HBA/vhosts únicamente para rollback dirigido. No se alteraron backups ajenos, no se instaló Docker ni se actualizó/reinició el VPS.
+- Pruebas finales: **112/112 .NET Release correctas**, build Linux self-contained y Astro/210 enlaces correctos; suite incluye reserva concurrente de códigos. No se crearon tenants ficticios en el VPS. Las altas reales del operador se preservan.
+- Informe completo y límites: [05-Deployment-Produccion.md](05-Deployment-Produccion.md), secciones 13–14. Git: fuentes comprometidas/publicadas; quedan solo `mockup/site.png` y `mockup/site2.png` ajenos sin seguimiento. Sin force push ni rebase.
 
 ## Producción — preparación local autorizada — 26/11/2026
 
@@ -543,9 +548,9 @@ Incluyen rutas, procedimientos, estados, límites de cada rol y resolución de p
 4. Sustituir las credenciales bootstrap locales antes de cualquier ambiente compartido o publicado.
 5. Obtener validacion juridica documentada sobre la correspondencia entre la regla funcional aprobada y la expresion legal `dias habiles corridos`.
 6. Ejecutar la aceptacion manual completa de la Fase 5 con usuarios reales de prueba para cada rol.
-7. El deployment permanece pendiente por falta de VPS. No se configuro Ubuntu, Nginx, systemd, DNS, HTTPS ni infraestructura de produccion.
+7. Deployment de pruebas completado el 26/11/2026; pendiente aceptación funcional integral por roles y confirmación de recepción/DKIM del correo según el apartado vigente superior.
 8. ClamAV debe estar disponible y configurado como obligatorio antes de aceptar documentos en produccion.
 
 ## Proxima actividad autorizada
 
-Realizar la aceptación manual del MVP, de permisos legales/Sexo y de los paneles globales/calendarios autorizados el 23/11/2026. Completar la verificación administrativa de los calendarios anuales y obtener la revisión jurídica indicada en la matriz. La publicación será una actividad futura separada; no iniciar otras funcionalidades sin autorización expresa.
+Realizar la aceptación manual del MVP, de permisos legales/Sexo y de los paneles globales/calendarios autorizados el 23/11/2026. Completar la verificación administrativa de los calendarios anuales y obtener la revisión jurídica indicada en la matriz. El VPS de pruebas ya está publicado; no iniciar otras funcionalidades sin autorización expresa.
